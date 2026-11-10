@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A0E15">
+<title>Signinator</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Signinator"><meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/static/style.css?v=BUILD">
+</head>
+<body>
+<div class="app" id="app" data-view="text">
+ <div class="top">
+  <div class="title"><h1>Signinator</h1><span>Write a message, pick a look, send it to the sign.</span></div>
+  <button type="button" id="modeBadge" class="mode" title="Open settings"><b id="modeName">…</b><span id="modeInfo">Connecting</span></button>
+  <div class="seg2" id="viewSeg" role="group" aria-label="View">
+   <button type="button" aria-pressed="true" data-v="text">Text</button><button type="button" aria-pressed="false" data-v="fx">Effects</button><button type="button" aria-pressed="false" data-v="gif">GIFs</button><button type="button" id="reloadBtn" title="Reload the app with the latest version" aria-label="Reload app">↻</button><button type="button" id="setBtn" title="Settings" aria-label="Settings">⚙</button>
+  </div>
+ </div>
+
+ <div class="stage" id="stage">
+  <div class="cvwrap" id="cvwrap"><canvas id="view" aria-label="What the sign is showing now"></canvas><div class="stmsg" id="stMsg" hidden></div></div>
+  <div class="stagebar">
+   <div class="pw" id="pwSeg" role="group" aria-label="Signinator on or off"><button type="button" data-p="on" title="Signinator shows your message on the sign">On</button><button type="button" data-p="off" title="Sign goes dark (Signinator holds it black)">Off</button><button type="button" data-p="wled" title="Signinator stops sending and WLED runs its own effects and presets">WLED</button><button type="button" data-p="auto" title="Off and idle until music plays; on while it plays; off again when it stops">Auto</button></div>
+   <span class="k bk">Bright</span>
+   <input type="range" id="dim" min="0" max="1000" value="500" aria-label="Brightness">
+   <span class="val" id="dimval">128</span>
+   <span class="src"><span class="tag" id="stageTag">LIVE</span><span id="srcText"></span><button type="button" id="npX" class="npx" title="Stop showing the album art until the next song" hidden>✕ art</button></span>
+  </div>
+ </div>
+
+ <div class="ctrl" id="ctrl">
+ <section class="box pvbox"><div class="bh"><b>Preview</b><span class="tag pv" id="pvTag">SAME AS SIGN</span></div>
+  <div class="pvwrap" id="pvwrap"><canvas id="pv" aria-label="Preview of your changes, not sent yet"></canvas></div>
+ </section>
+ <!-- TEXT -->
+ <div class="view" data-for="text">
+  <section class="box">
+   <div class="bh"><b>Message</b><span class="k">new line = Enter · send = Ctrl+Enter</span></div>
+   <div class="msgrow"><textarea id="text" rows="2" maxlength="1000" aria-label="Message" spellcheck="false">SIGNINATOR</textarea><button type="button" id="emoji-toggle" class="emoji-btn" title="Emoji" aria-pressed="false">😀</button></div>
+   <div id="emoji-picker" class="emoji-picker" hidden></div>
+   <div id="emoji-manage" class="emoji-manage" hidden>
+    <p class="hint">Add your own emoji: pick an image you have the rights to use, give it a short name, and it becomes <code>:name:</code> in your messages. It's resized to the sign's height.</p>
+    <div class="line"><label class="btn file" id="ce-file-lbl">Choose image<input type="file" id="ce-file" accept="image/*"></label><input type="text" id="ce-name" placeholder="name (a-z, 0-9, _)" maxlength="32" aria-label="Emoji name"><button type="button" id="ce-add">Add emoji</button></div>
+    <div id="ce-list" class="ce-list"></div>
+   </div>
+  </section>
+  <section class="box">
+   <div class="bh"><b>Text style</b><span class="k" id="styleNote"></span></div>
+   <div class="line"><span class="k kw">Font</span><select id="font" aria-label="Font" style="flex:1"><option value="pixel">Pixel 5×8</option></select><button type="button" id="smooth" aria-pressed="false" title="Smooth (anti-aliased) letter edges. Off = crisp pixels">Smooth</button></div>
+   <div class="line"><span class="k kw">Size</span><div class="pats" id="tsize" style="flex:1"><button type="button" data-s="fit" aria-pressed="true" title="As big as fits the sign">Fit</button><button type="button" data-s="stretch" title="Fill the whole screen (letters change shape)">Stretch</button><button type="button" data-s="px" title="Choose the letter height in pixels">Custom</button></div></div>
+   <div class="line" id="hline"><span class="k kw">Height</span><input type="range" id="theight" min="4" max="32" value="8" aria-label="Text height in pixels"><span class="val" id="theightval">8</span><span class="k">px</span></div>
+   <div class="line"><span class="k kw">Align</span><div class="pats" id="talign" style="flex:1"><button type="button" data-a="left" title="Line up on the left">⇤ Left</button><button type="button" data-a="center" aria-pressed="true">Center</button><button type="button" data-a="right" title="Line up on the right">Right ⇥</button></div></div>
+  </section>
+  <section class="box">
+   <div class="bh"><b>Look and motion</b><span class="k" id="effName">Solid color</span></div>
+   <div class="pats" id="effects">
+    <button type="button" data-e="solid" aria-pressed="true">Solid</button>
+    <button type="button" data-e="two_color_words">Two colors</button>
+    <button type="button" data-e="rainbow_fade">Rainbow fade</button>
+    <button type="button" data-e="rainbow_chars">Rainbow chars</button>
+    <button type="button" data-e="fade">Breathe</button>
+    <button type="button" data-e="blink">Blink</button>
+   </div>
+   <div class="colors">
+    <label><span class="k">Color</span><input type="color" id="color" value="#00e5ff"></label>
+    <label id="color2-wrap" hidden><span class="k">Color 2</span><input type="color" id="color2" value="#ff00ff"></label>
+    <label><span class="k">Background</span><input type="color" id="bg" value="#000000"></label>
+   </div>
+   <div class="sub">
+   <div class="chks">
+    <button type="button" id="scroll" aria-pressed="true" title="Scroll the message across the sign">Scroll</button>
+    <button type="button" id="continuous" aria-pressed="false" title="Start the next pass right after the message instead of after a blank screen">Continuous</button>
+    <button type="button" id="emoji" aria-pressed="false" title="Draw emoji as color pictures">Emoji</button>
+   </div>
+   <div class="line"><span class="k">Speed</span><input type="range" id="speed" min="4" max="80" value="24" aria-label="Scroll speed"><span class="val" id="speedval">24</span><span class="k">px/s</span></div>
+   </div>
+  </section>
+  <div class="sendrow"><button type="button" class="send" id="send-text"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small id="sendSub">shows it on the sign now</small></button><button type="button" class="restbtn" data-rest="text" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button></div>
+ </div>
+
+ <!-- EFFECTS -->
+ <div class="view" data-for="fx" hidden>
+  <section class="box">
+   <div class="bh"><b>Effect</b><span class="k" id="fxName"></span></div>
+   <div class="pats fxg" id="fxList"></div>
+   <p class="hint" id="fxHint"></p>
+  </section>
+  <section class="box">
+   <div class="bh"><b>Controls</b><span class="k">like WLED</span></div>
+   <div class="line"><span class="k kw">Speed</span><input type="range" id="fxSpeed" min="0" max="255" value="128" aria-label="Effect speed"><span class="val" id="fxSpeedV">128</span></div>
+   <div class="line"><span class="k kw">Intensity</span><input type="range" id="fxInt" min="0" max="255" value="128" aria-label="Effect intensity"><span class="val" id="fxIntV">128</span></div>
+   <div class="line"><span class="k kw">Palette</span><select id="fxPal" aria-label="Palette" style="flex:1"></select></div>
+   <div class="line"><button type="button" id="fxAlbum" aria-pressed="false" title="Use the main colors of the album art that's playing (changes with each song)">🎨 Album colors</button><span class="sw" id="fxAlbumSw" title="Colors from the current album art"></span><span class="k" id="fxAlbumNote"></span></div>
+   <div class="colors">
+    <label><span class="k">Color 1</span><input type="color" id="fxC1" value="#00ff78"></label>
+    <label><span class="k">Color 2</span><input type="color" id="fxC2" value="#ff00a0"></label>
+    <label><span class="k">Color 3</span><input type="color" id="fxC3" value="#2878ff"></label>
+   </div>
+  </section>
+  <div class="sendrow"><button type="button" class="send" id="send-fx"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small>runs the effect on the sign</small></button><button type="button" class="restbtn" data-rest="fx" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button></div>
+ </div>
+
+ <!-- GIFS -->
+ <div class="view" data-for="gif" hidden>
+  <section class="box">
+   <div class="bh"><b>GIFs</b><span class="k" id="gifCount"></span></div>
+   <div class="gifgrid" id="gifList"></div>
+   <div class="line"><label class="btn file" id="gifUpLbl" style="flex:1">+ Add a GIF or picture<input type="file" id="gifUp" accept="image/gif,image/png,image/jpeg,image/webp"></label><button type="button" id="gifDel" title="Delete the selected GIF">Delete</button></div>
+   <p class="hint">Upload your own GIFs (for example a Nyan Cat you've saved) or pictures. The built-in ones are original retro animations. <button type="button" class="linkbtn" id="gifRestore">Bring back deleted built-ins</button></p>
+  </section>
+  <section class="box">
+   <div class="bh"><b>Playback</b><span class="k" id="gifInfo"></span></div>
+   <div class="pats" id="gifMode">
+    <button type="button" data-m="fit" aria-pressed="true" title="Whole picture, shape kept">Fit</button>
+    <button type="button" data-m="fill" title="Fill the screen, edges cropped">Fill</button>
+    <button type="button" data-m="stretch" title="Fill the screen exactly">Stretch</button>
+    <button type="button" data-m="scroll" title="Full height, scrolls across (wide pictures)">Scroll</button>
+   </div>
+   <div class="line"><span class="k kw">Speed</span><input type="range" id="gifRate" min="0.25" max="4" step="0.25" value="1" aria-label="Playback speed"><span class="val" id="gifRateV">1×</span></div>
+   <div class="line"><span class="k kw">Timing</span><div class="pats" id="gifBeat" style="flex:1;grid-template-columns:1fr 1fr"><button type="button" data-b="0" aria-pressed="true" title="Plays at its own speed (x Speed)">Normal speed</button><button type="button" data-b="1" title="Each loop of the GIF takes a whole number of beats and stays on the beat">♪ Dance to the beat</button></div></div>
+   <div class="line" id="gifBplLine" hidden><span class="k kw">Beats/loop</span><select id="gifBpl" aria-label="Beats per loop of the GIF" style="flex:1"><option value="auto">Auto (closest to the GIF's own speed)</option><option value="1">1 beat</option><option value="2">2 beats</option><option value="4">4 beats</option><option value="8">8 beats</option><option value="16">16 beats</option></select><span class="k" id="gifBpm"></span></div>
+  </section>
+  <div class="sendrow"><button type="button" class="send" id="send-gif"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small>plays the GIF on the sign</small></button><button type="button" class="restbtn" data-rest="gif" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button></div>
+ </div>
+
+ <div class="msg" id="status" role="status">ready</div>
+ </div>
+</div>
+
+<dialog id="setDlg" aria-labelledby="setTitle">
+ <form method="dialog" id="setForm" novalidate>
+  <h2 id="setTitle">Settings</h2>
+  <div class="seg2 stabs" id="sTabs" role="tablist">
+   <button type="button" data-t="wled" aria-pressed="true">WLED</button><button type="button" data-t="layout" aria-pressed="false">Layout</button><button type="button" data-t="color" aria-pressed="false">Color</button><button type="button" data-t="music" aria-pressed="false">Music</button><button type="button" data-t="rest" aria-pressed="false">Resting</button><button type="button" data-t="ha" aria-pressed="false">Home Asst.</button>
+  </div>
+  <fieldset data-tab="wled"><legend>WLED controller</legend>
+   <label class="wide">Host name or IP<input id="sHost" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="wled-sign.local"></label>
+   <label>DDP port<input id="sPort" type="number" min="1" max="65535" inputmode="numeric"></label>
+   <label>&nbsp;<button type="button" id="sCheck">Check WLED</button></label>
+   <label class="chk wide"><input id="sEnabled" type="checkbox">Send to WLED (off = preview only)</label>
+   <label class="chk wide"><input id="sAuto" type="checkbox">Match the sign's size to WLED's 2D matrix</label>
+   <div class="wide" style="display:grid;gap:4px"><button type="button" id="sGeom">Get size from WLED now</button></div>
+   <div class="wide wledlinks" id="sWledLinks"></div>
+   <label class="wide">Also show on screens (Matrixinator; host names or IPs, comma separated)<input id="sMirror" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="matrixinator.local"></label>
+   <label class="chk wide"><input id="sMirrorOn" type="checkbox">Screens on (off = dark, nothing sent)</label>
+   <label class="chk wide"><input id="sMirrorPhotos" type="checkbox">Album art, GIFs and pictures as full-resolution photos (no dots)</label>
+   <label>Screen look for LED content (effects, text)<select id="sMirrorLook"><option value="led">Same resolution as the sign (LED dots)</option><option value="hires">Higher resolution LED dots (smoother text and effects)</option></select></label>
+   <label>Higher-resolution size<select id="sMirrorSize"><option value="60">60 × 60</option><option value="80">80 × 80</option><option value="96">96 × 96</option><option value="120">120 × 120</option><option value="160">160 × 160</option><option value="240">240 × 240 (heavy)</option></select></label>
+   <label>Screen frames per second (maximum)<input id="sMirrorFps" type="number" min="5" max="60" inputmode="numeric"></label>
+   <label class="chk"><input id="sMirrorFpsAuto" type="checkbox">Match what the screen can draw automatically</label>
+   <p class="note wide" id="sMirrorNote"></p>
+   <pre id="wledOut" hidden></pre>
+  </fieldset>
+  <fieldset data-tab="music"><legend>Now playing (AirPlay album art)</legend>
+   <label class="chk wide"><input id="sNpOn" type="checkbox">Show album art while music plays</label>
+   <label>Show the art<select id="sNpShow"><option value="song">For the whole song</option><option value="brief">For a few seconds per song, then resting</option></select></label>
+   <label>Seconds per song<input id="sNpBrief" type="number" min="1" max="600" inputmode="numeric"></label>
+   <label>Change the art<select id="sNpDelayMode"><option value="auto">When the speaker plays the new song (match the audio delay)</option><option value="ms">After a fixed delay</option></select></label>
+   <label>Fixed art delay (ms)<input id="sNpDelay" type="number" min="0" max="10000" step="50" inputmode="numeric"></label>
+   <label>Picture<select id="sNpMode"><option value="fill">Fill (crop edges)</option><option value="fit">Fit (whole cover)</option><option value="stretch">Stretch</option></select></label>
+   <label>Go back after (seconds)<input id="sNpHold" type="number" min="0" max="3600" inputmode="numeric"></label>
+   <label class="chk wide"><input id="sNpEnh" type="checkbox">Tune the picture for LEDs (more color and contrast, sharper)</label>
+   <label class="chk wide"><input id="sNpLift" type="checkbox">Lift dark colors when the sign is dim (keeps them from going black)</label>
+   <label class="wide">Token (optional; senders must send it as X-Token)<input id="sNpTok" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="leave empty for none"></label>
+   <pre id="npOut"></pre>
+   <div class="wide"><span class="k">Recent album art · hide one to never show it (e.g. a placeholder sent before the real cover)</span>
+    <div class="arthist" id="artHist"></div></div>
+  </fieldset>
+  <fieldset data-tab="music"><legend>What each display shows</legend>
+   <label>LED sign<select id="sRouteSign"><option value="all">Everything: album art while music plays, else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
+   <label>LCD screen<select id="sRouteScreen"><option value="all">Everything: album art while music plays, else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
+   <p class="note wide" id="sRouteNote"></p>
+  </fieldset>
+  <fieldset data-tab="music"><legend>Music relay (AirPlay)</legend>
+   <p class="note">Signinator's AirPlay speaker takes the name of the speaker you pick here plus “ w/Art” (for example “Marantz Stereo w/Art”). Pick only that one on your phone: the sign shows the album art and the music plays on the speaker.</p>
+   <label class="wide">Play the music on<select id="sRelay"><option value="">Off (sign only, no sound)</option></select></label>
+   <label>Speaker volume<input id="sRelayVol" type="number" min="0" max="100" inputmode="numeric"></label>
+   <label>Phone volume slider<select id="sRelayVolMode"><option value="audio">Adjusts the music (works with any speaker)</option><option value="speaker">Sets the speaker's volume (needs ESP32 firmware update)</option></select></label>
+   <label class="chk wide"><input id="sAudioAuto" type="checkbox">Match the music effects to the AirPlay delay automatically</label>
+   <label>Fixed light delay (ms, when not automatic)<input id="sAudioDelay" type="number" min="0" max="5000" step="50" inputmode="numeric"></label>
+   <label>Fine-tune (ms, + = later)<input id="sAudioOff" type="number" min="-2000" max="2000" step="25" inputmode="numeric"></label>
+   <p class="note" id="sAudioNote"></p>
+   <label>Audio format<select id="sRelayCodec"><option value="alac">Apple Lossless (works with the ESP32)</option><option value="pcm">Uncompressed (some older speakers)</option></select></label>
+   <label>&nbsp;<button type="button" id="sRelayFind">Find speakers</button></label>
+   <p class="note" id="sRelayNote"></p>
+  </fieldset>
+  <fieldset data-tab="music"><legend>Sync test (lights vs. sound)</legend>
+   <p class="note">With the music stopped, this plays a soft tick every second on the relay speaker, and the sign flashes a white square when the music effects think the tick plays. Watch the sign, listen, and nudge until they happen together. If the flash comes first, press +.</p>
+   <div class="row4"><button type="button" id="syncStart">Start test</button><button type="button" id="syncStop">Stop</button></div>
+   <div class="row4" id="syncNudge"><button type="button" data-n="-50">−50 ms</button><button type="button" data-n="-10">−10 ms</button><button type="button" data-n="10">+10 ms</button><button type="button" data-n="50">+50 ms</button></div>
+   <p class="note" id="syncNote"></p>
+  </fieldset>
+  <fieldset data-tab="layout"><legend>Sign layout</legend>
+   <label class="wide">Mapping<select id="sMap"><option value="matrix">2D matrix (WLED does the wiring)</option><option value="panels">Panels (Signinator does the wiring)</option></select></label>
+   <label data-m="matrix">Width (pixels)<input id="sW" type="number" min="1" max="1024" inputmode="numeric"></label>
+   <label data-m="matrix">Height (pixels)<input id="sH" type="number" min="1" max="256" inputmode="numeric"></label>
+   <label data-m="panels">Panel width<input id="sTW" type="number" min="1" max="256" inputmode="numeric"></label>
+   <label data-m="panels">Panel height<input id="sTH" type="number" min="1" max="256" inputmode="numeric"></label>
+   <label data-m="panels">Panels across<input id="sTX" type="number" min="1" max="32" inputmode="numeric"></label>
+   <label data-m="panels">Panels down<input id="sTY" type="number" min="1" max="32" inputmode="numeric"></label>
+   <label class="chk" data-m="panels"><input id="sSerp" type="checkbox">Serpentine rows</label>
+   <label class="chk" data-m="panels"><input id="sChain" type="checkbox">Chain serpentine</label>
+   <label class="chk wide"><input id="sFpsAuto" type="checkbox">Match WLED's frame rate automatically</label>
+   <label>Frames per second (maximum)<input id="sFps" type="number" min="5" max="240" step="5" inputmode="numeric"></label>
+   <p class="note" id="sFpsNote" style="align-self:end"></p>
+   <label class="chk"><input id="sFlipH" type="checkbox">Flip left/right</label>
+   <label class="chk"><input id="sFlipV" type="checkbox">Flip up/down</label>
+   <p class="note" id="sNote"></p>
+  </fieldset>
+  <fieldset data-tab="color"><legend>Color</legend>
+   <label>Gamma (1 = off)<input id="sGamma" type="number" min="1" max="3" step="0.1" inputmode="decimal"></label>
+   <label>LED white balance<select id="sCC"><option value="255,176,240">WS2812 typical</option><option value="255,160,200">Warmer</option><option value="255,200,255">Subtle</option><option value="255,255,255">None (raw)</option><option value="custom">Custom</option></select></label>
+   <label>Red<input id="sR" type="number" min="0" max="255" inputmode="numeric"></label>
+   <label>Green<input id="sG" type="number" min="0" max="255" inputmode="numeric"></label>
+   <label>Blue<input id="sB" type="number" min="0" max="255" inputmode="numeric"></label>
+   <p class="note">White balance fixes the blue-green tint of WS2812 white. It affects the sign only, not the preview.</p>
+   <label class="wide">Dimming (colors when the sign is dim)<select id="sDitherMode">
+    <option value="spatial">Spatial dithering: steady fine pattern, exact colors</option>
+    <option value="hue">Hue-preserving: steady, no pattern, colors kept close</option>
+    <option value="temporal">Temporal dithering: exact, needs a fast refresh</option>
+    <option value="wled">Temporal dithering in WLED (dither firmware from Lickety Split)</option>
+    <option value="off">Off: WLED dims (hues shift when dim)</option></select></label>
+   <label class="chk wide"><input id="sDitherDark" type="checkbox">Also dither the darkest levels (smoother dark fades; spatial: sparse dots, temporal: may shimmer)</label>
+   <label id="sDitherFpsL">WLED dither refresh<select id="sDitherFps"><option value="auto">Auto: as fast as the LEDs allow</option><option value="240">240 per second</option><option value="180">180 per second</option><option value="120">120 per second</option><option value="90">90 per second</option><option value="60">60 per second</option><option value="30">30 per second</option><option value="0">Only when a new frame arrives</option></select></label>
+   <label id="sDitherHzL">Flicker limit<select id="sDitherHz"><option value="0">Off: finest steps (may blink when the refresh is slow)</option><option value="20">20 Hz</option><option value="30">30 Hz</option><option value="40">40 Hz</option><option value="60">60 Hz (steadiest)</option></select></label>
+   <p class="note" id="sDitherNote"></p>
+  </fieldset>
+  <fieldset data-tab="layout"><legend>Calibrate</legend>
+   <div class="row4"><button type="button" class="pat" data-pat="origin">Origin</button><button type="button" class="pat" data-pat="rows">Rows</button><button type="button" class="pat" data-pat="sweep">Sweep</button><button type="button" class="pat" data-pat="border">Border</button></div>
+   <p class="note">Origin: top-left pixel red, the one to its right green, the one below blue. If the real sign doesn't match, fix the mapping above (or WLED's 2D setup). Send a message to end the test.</p>
+  </fieldset>
+  <fieldset data-tab="rest"><legend>Resting state</legend>
+   <p class="note">What the sign shows when nothing is playing. Pick it with ☾ Make resting next to Send in the Text, Effects or GIFs view.</p>
+   <label class="wide">When the music stops (or the brief album art is over)<select id="sRestAfter"><option value="rest">Show the resting look</option><option value="previous">Go back to what was showing before</option></select></label>
+   <p class="note" id="sRestNow">No resting look saved yet.</p>
+   <button type="button" id="sRestShow">Show it now</button>
+   <button type="button" id="sRestClear">Clear resting look</button>
+  </fieldset>
+  <fieldset data-tab="ha"><legend>Home Assistant (MQTT)</legend>
+   <p class="note">Signinator shows up in Home Assistant as a device (MQTT discovery): power and brightness, message, effect, GIF, album art, song, and settings. Needs the MQTT integration (Mosquitto broker) in Home Assistant; log in with a Home Assistant user.</p>
+   <label class="chk wide"><input id="sMqOn" type="checkbox">Connect to Home Assistant</label>
+   <label>Broker host or IP<input id="sMqHost" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="homeassistant.local"></label>
+   <label>Port<input id="sMqPort" type="number" min="1" max="65535" inputmode="numeric"></label>
+   <label>User name<input id="sMqUser" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+   <label>Password<input id="sMqPass" type="password" autocomplete="new-password"></label>
+   <label>Topic name<input id="sMqBase" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="signinator"></label>
+   <p class="note" id="sMqNote" style="align-self:end"></p>
+  </fieldset>
+  <div class="acts"><span class="msg" id="sMsg" role="status"></span><button type="button" id="sCancel">Cancel</button><button type="submit" id="sSave" class="pri">Save</button></div>
+ </form>
+</dialog>
+<script src="/static/app.js?v=BUILD"></script>
+</body>
+</html>

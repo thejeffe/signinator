@@ -1,0 +1,8 @@
+# Signinator behind Caddy (TLS). Mirrors the pihole reverse-proxy pattern.
+# The MJPEG preview stream must not be buffered, hence flush_interval -1.
+signinator.example.com {
+	# tls internal   # uncomment for Caddy's internal CA, or point at your ACME/DNS setup
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+	}
+}

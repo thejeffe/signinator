@@ -1,0 +1,16 @@
+[Unit]
+Description=Signinator LED matrix service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/signinator
+ExecStart=/opt/signinator/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=3
+# small box: keep it modest
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

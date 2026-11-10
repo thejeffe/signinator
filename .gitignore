@@ -1,0 +1,10 @@
+# local settings and runtime data (config.yaml holds hosts and passwords)
+config.yaml
+config.yaml.*
+data/
+.venv/
+__pycache__/
+*.pyc
+*.tmp
+# old copies kept next to edited files
+*.bak.*
