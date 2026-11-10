@@ -321,6 +321,23 @@ class NowPlaying:
                 # music stopped, or the brief art time is over: back to resting
                 threading.Thread(target=self.e.music_ended, daemon=True).start()
 
+    def playing_art(self) -> bool:
+        """Music is playing and its cover is here (for displays set to "album art only":
+        they show it the whole song, whatever the brief / hold settings)."""
+        if not self.cfg().get("enabled", True) or not self.art or self._art_stale:
+            return False
+        if self._key() == self._dismissed:
+            return False
+        return self.info["state"] == "playing" and time.time() - self.info["updated"] < WATCHDOG
+
+    def led_scene(self):
+        """The cover as the LED sign shows it (cached until the cover or the look changes)."""
+        key = (self.art_sha, self.e.w, self.e.h, self.e.brightness, self.cfg().get("mode"),
+               self.cfg().get("enhance"), self.cfg().get("lift"))
+        if getattr(self, "_led_key", None) != key:
+            self._led_scene, self._led_key = self._scene(), key
+        return self._led_scene
+
     def _scene(self):
         from .render import SolidScene, load_image_bytes, prepare_for_leds
         try:

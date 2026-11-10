@@ -133,16 +133,20 @@ class Engine:
         art_on = self._override is not None and getattr(self, "_override_kind", "art") == "art"
         if m == "noart":
             return "content"
-        if art_on:
-            return "art"
-        return "dark" if m == "art" else "content"
+        if m == "art":
+            # album art only: the cover the whole time music plays (not just the brief flash)
+            np = getattr(self, "nowplaying", None)
+            return "art" if art_on or (np is not None and np.playing_art()) else "dark"
+        return "art" if art_on else "content"
 
     def _sign_scene(self):
         ov = self._override
         if ov is not None and getattr(self, "_override_kind", "art") != "art":
             return ov                        # sync test flash
         k = self.shows("sign")
-        return ov if k == "art" else None if k == "dark" else self.scene
+        if k == "art":
+            return ov if ov is not None else self.nowplaying.led_scene()
+        return None if k == "dark" else self.scene
 
     def clear_override(self):
         with self._lock:
