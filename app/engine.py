@@ -316,7 +316,8 @@ class Engine:
         except (TypeError, ValueError):
             min_hz = 0
         return {"mode": mode, "darkest": bool(raw.get("darkest", False)),
-                "enabled": mode != "off", "wled_fps": wfps, "min_hz": min_hz}
+                "enabled": mode != "off", "wled_fps": wfps, "min_hz": min_hz,
+                "fit": raw.get("fit", True) is not False}
 
     def wled_dither_want(self) -> dict:
         """What WLED's own temporal dithering should be set to (dither firmware, mode "wled")."""
@@ -806,11 +807,24 @@ class Engine:
             return b""  # mapping and frame disagree mid-resize; skip this frame
         d = self.dither_cfg()
         if d["mode"] == "wled":
-            # WLED does gamma, white balance and dimming: send the plain picture
+            # WLED does gamma, white balance and dimming: send the plain picture, or with "fit",
+            # each color moved to the nearest one WLED can show steadily (app/colorfit.py)
             out = bytearray(len(coords) * 3)
             i = 0
+            fit = None
+            if d.get("fit", True):
+                info = (getattr(self, "wled_info", None) or {}).get("dither") or {}
+                if info.get("levels") is not None:
+                    want = self.wled_dither_want()
+                    if not hasattr(self, "_colorfit"):
+                        from .colorfit import ColorFit
+                        self._colorfit = ColorFit()
+                    self._colorfit.setup(want["bri16"], want["g"], want["wb"], int(info["levels"]), want["dark"])
+                    if self._colorfit.active:
+                        fit = self._colorfit.fit
             for (x, y) in coords:
-                out[i], out[i + 1], out[i + 2] = px[x, y]
+                c = px[x, y]
+                out[i], out[i + 1], out[i + 2] = fit(*c) if fit else c
                 i += 3
             return bytes(out)
         if d["mode"] == "temporal":

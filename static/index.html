@@ -229,6 +229,7 @@
     <option value="off">Off: WLED dims (hues shift when dim)</option></select></label>
    <label class="chk wide"><input id="sDitherDark" type="checkbox">Also dither the darkest levels (smoother dark fades; spatial: sparse dots, temporal: may shimmer)</label>
    <label id="sDitherFpsL">WLED dither refresh<select id="sDitherFps"><option value="auto">Auto: as fast as the LEDs allow</option><option value="240">240 per second</option><option value="180">180 per second</option><option value="120">120 per second</option><option value="90">90 per second</option><option value="60">60 per second</option><option value="30">30 per second</option><option value="0">Only when a new frame arrives</option></select></label>
+   <label class="chk wide" id="sDitherFitL"><input id="sDitherFit" type="checkbox">Fit colors to what the LEDs can show when dim (steady hues, no shimmer)</label>
    <label id="sDitherHzL">Flicker limit<select id="sDitherHz"><option value="0">Off: finest steps (may blink when the refresh is slow)</option><option value="20">20 Hz</option><option value="30">30 Hz</option><option value="40">40 Hz</option><option value="60">60 Hz (steadiest)</option></select></label>
    <p class="note" id="sDitherNote"></p>
   </fieldset>

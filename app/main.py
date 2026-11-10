@@ -576,6 +576,8 @@ def post_config(patch: dict = Body(...)):
         if dz.get("mode") in ("off", "spatial", "hue", "temporal", "wled"):
             clean["mode"] = dz["mode"]
             clean["enabled"] = dz["mode"] != "off"
+        if "fit" in dz:
+            clean["fit"] = bool(dz["fit"])
         if "min_hz" in dz:
             try:
                 clean["min_hz"] = max(0, min(120, int(dz["min_hz"])))

@@ -585,7 +585,7 @@ $("dim").onchange = async () => {
     $("sFpsNote").textContent = `Sending ${s.send_fps || "?"} fps now` + (s.wled_fps != null ? `; WLED shows ${s.wled_fps}.` : ".") +
       (s.fps_auto !== false ? " Automatic: follows what WLED can show, up to the maximum." : " Set it to about what WLED's Info page shows.");
     { const dz = s.dither || {}; $("sDitherMode").value = dz.mode || "spatial"; $("sDitherDark").checked = !!dz.darkest;
-      $("sDitherHz").value = String(dz.min_hz || 0); $("sDitherFps").value = String(dz.wled_fps ?? "auto"); if (!$("sDitherFps").value) $("sDitherFps").value = "auto"; WLED_DITHER = ((s.wled || {}).status || {}).dither; syncDither(); }
+      $("sDitherHz").value = String(dz.min_hz || 0); $("sDitherFit").checked = dz.fit !== false; $("sDitherFps").value = String(dz.wled_fps ?? "auto"); if (!$("sDitherFps").value) $("sDitherFps").value = "auto"; WLED_DITHER = ((s.wled || {}).status || {}).dither; syncDither(); }
     const np = s.nowplaying || {}, ns = np.settings || {};
     $("sNpOn").checked = ns.enabled !== false; $("sNpMode").value = ns.mode || "fill"; $("sNpHold").value = ns.hold ?? 60;
     $("sNpEnh").checked = ns.enhance !== false; $("sNpLift").checked = ns.lift !== false;
@@ -669,7 +669,7 @@ $("dim").onchange = async () => {
         (WLED_DITHER === undefined ? "" : WLED_DITHER ? `WLED has it (${WLED_DITHER.fw}${WLED_DITHER.on ? ", on, " + WLED_DITHER.rate + " refreshes/s" + (WLED_DITHER.ledMax ? ", the LEDs allow up to " + WLED_DITHER.ledMax : "") + (WLED_DITHER.levels != null && WLED_DITHER.levels < 256 ? ", flicker limit allows " + (WLED_DITHER.levels > 1 ? "1/" + WLED_DITHER.levels + " steps" : "no in-between steps (rounding)") : "") : ", off"}).` + (WLED_DITHER.fw === "dither1" ? " Update WLED from Lickety Split for the automatic refresh rate." : "") : "This WLED doesn't have it yet: install the WLED (ESP32) build from Lickety Split."),
       off: "WLED does the dimming: steady, but colors drift when the sign is dim.",
     }[m] + (m === "off" || m === "wled" ? "" : " Signinator does the dimming and WLED's own brightness stays at 100%.");
-    $("sDitherFpsL").hidden = m !== "wled"; $("sDitherHzL").hidden = m !== "wled";
+    $("sDitherFpsL").hidden = m !== "wled"; $("sDitherHzL").hidden = m !== "wled"; $("sDitherFitL").hidden = m !== "wled";
   }
   $("sDitherMode").addEventListener("change", syncDither);
   $("sNpDelayMode").addEventListener("change", () => { $("sNpDelay").disabled = $("sNpDelayMode").value === "auto"; });
@@ -793,7 +793,7 @@ $("dim").onchange = async () => {
         wled: { host, port: +f.port.value || 4048, enabled: f.en.checked, auto_geometry: f.auto.checked },
         mapping, gamma: Math.max(1, Math.min(3, +f.gamma.value || 1)),
         color_correction: { r: +f.r.value, g: +f.g.value, b: +f.b.value },
-        dither: { mode: $("sDitherMode").value, darkest: $("sDitherDark").checked, wled_fps: $("sDitherFps").value === "auto" ? "auto" : +$("sDitherFps").value, min_hz: +$("sDitherHz").value },
+        dither: { mode: $("sDitherMode").value, darkest: $("sDitherDark").checked, wled_fps: $("sDitherFps").value === "auto" ? "auto" : +$("sDitherFps").value, min_hz: +$("sDitherHz").value, fit: $("sDitherFit").checked },
         routing: { sign: $("sRouteSign").value, screen: $("sRouteScreen").value },
         mirror: { hosts: $("sMirror").value.split(/[\s,]+/).map(h => h.trim()).filter(Boolean), look: $("sMirrorLook").value,
                   size: +$("sMirrorSize").value, fps: Math.max(5, Math.min(60, +$("sMirrorFps").value || 30)), fps_auto: $("sMirrorFpsAuto").checked, photos: $("sMirrorPhotos").checked, enabled: $("sMirrorOn").checked },
