@@ -30,6 +30,7 @@ import time
 import json
 import math
 import urllib.request
+import urllib.error
 import fcntl
 import struct
 import termios
@@ -284,36 +285,32 @@ class Relay:
                 log.warning("relay watchdog: %s", e)
 
     def _watch_once(self, fails, last_up):
-        import socket
-        if True:
-            addr = self.status.get("address") if self._proc and self.status.get("state") == "playing" else None
-            if not addr:
-                return 0, None
-            host, _, port = addr.rpartition(":")
-            ok = True
-            try:
-                socket.create_connection((host, int(port)), timeout=3).close()
-            except OSError:
-                ok = False
-            restarted = False
-            if ok:
-                try:
-                    with urllib.request.urlopen("http://%s/api/system/info" % host, timeout=3) as r:
-                        up = int(json.loads(r.read()).get("info", {}).get("uptime_s"))
-                    restarted = last_up is not None and up < last_up
-                    last_up = up
-                except Exception:  # noqa: BLE001 - not an airplay-esp32: the port check is enough
-                    pass
-            fails = 0 if ok else fails + 1
-            if restarted or fails >= 2:
-                why = "the speaker restarted" if restarted else "the speaker stopped answering"
-                log.info("relay: %s, restarting the sender", why)
-                with self._lock:
-                    if self._proc:
-                        self._stop(why)
-                        self._set("idle", address=None, error=why)
-                fails, last_up = 0, None
-        return fails, last_up
+        """Never connects to the speaker's AirPlay port: an airplay-esp32 takes any new connection
+        there as a new client and drops the playing session (that silenced the music). Instead it
+        asks the speaker's status page (port 80), which an airplay-esp32 has; other speakers are
+        left to the sender itself (it exits when its session dies, and a new one starts)."""
+        addr = self.status.get("address") if self._proc and self.status.get("state") == "playing" else None
+        if not addr:
+            return 0, None
+        host = addr.rpartition(":")[0]
+        try:
+            with urllib.request.urlopen("http://%s/api/system/info" % host, timeout=3) as r:
+                up = int(json.loads(r.read()).get("info", {}).get("uptime_s"))
+        except urllib.error.HTTPError:
+            return 0, None                       # answers, but isn't an airplay-esp32: nothing to check
+        except Exception:  # noqa: BLE001 - no answer at all
+            up = None
+        restarted = up is not None and last_up is not None and up < last_up
+        fails = 0 if up is not None else fails + 1
+        if restarted or fails >= 3:
+            why = "the speaker restarted" if restarted else "the speaker stopped answering"
+            log.info("relay: %s, restarting the sender", why)
+            with self._lock:
+                if self._proc:
+                    self._stop(why)
+                    self._set("idle", address=None, error=why)
+            return 0, None
+        return fails, up if up is not None else last_up
 
     def _drain_stderr(self, proc):
         for line in proc.stderr:
