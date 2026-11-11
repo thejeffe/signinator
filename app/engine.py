@@ -676,7 +676,7 @@ class Engine:
     def set_mode(self, mode: str):
         """Power control for the LED sign (the page's On/Off/WLED/Auto):
         'on'   LED on, not following the music
-        'off'  LED off (Auto, if on, keeps running for the LCD screen)
+        'off'  everything manual and off: Auto off, LED off (the LED switch alone: set_led)
         'auto' follow the music: each display that's switched on lights up only while music plays
         'wled' Signinator stops sending and hands the sign back to WLED."""
         if mode == "wled":
@@ -692,6 +692,8 @@ class Engine:
             self.led_enabled = True
             self.set_auto(False)
         else:
+            self.auto = False
+            self._auto_active = None
             self.set_led(False)
 
     def set_led(self, on: bool):
@@ -723,11 +725,9 @@ class Engine:
     def mode(self) -> str:
         if self.released:
             return "wled"
-        if not getattr(self, "led_enabled", True):
-            return "off"
         if getattr(self, "auto", False):
-            return "auto"
-        return "on"
+            return "auto"                    # Auto stays Auto when the LED alone is switched off
+        return "on" if getattr(self, "led_enabled", True) else "off"
 
     AUTO_GRACE = 15.0   # seconds of silence before auto mode turns the displays off
 
