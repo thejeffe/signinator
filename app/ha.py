@@ -148,10 +148,8 @@ class HABridge:
 
     # ---- commands ----
     def _on(self):
-        if self.e.mode == "auto":
-            self.e.wake()
-        elif self.e.mode != "on":
-            self.e.set_mode("on")
+        """New content from Home Assistant: wake a display that's switched on (never one that's off)."""
+        self.e.wake()
 
     def command(self, key: str, v: str):
         e = self.e
@@ -160,18 +158,17 @@ class HABridge:
             if "brightness" in j:
                 e.set_brightness(int(j["brightness"]))
             if j.get("state") == "ON":
-                self._on()
+                e.set_led(True)               # in Auto: lights up while music plays
             elif j.get("state") == "OFF":
-                if e.mode == "auto":
-                    e._set_power(False)       # off now; still turns on with the next song
-                else:
-                    e.set_mode("off")
+                e.set_led(False)              # stays off, music or not
         elif key == "brightness":
             e.set_brightness(max(0, min(255, int(float(v)))))
         elif key in ("route_sign", "route_screen"):
             m = dict((lab, k) for k, lab in ROUTES).get(v)
             if m:
                 e.update_config({"routing": {key[6:]: m}})
+        elif key == "auto":
+            e.set_auto(v.upper() == "ON")
         elif key == "screen":
             e.update_config({"mirror": {"enabled": v.upper() == "ON"}})
         elif key == "mode":
@@ -248,11 +245,12 @@ class HABridge:
             self._last_text = dict(st)
         np = e.nowplaying.status()
         mon = e.monitor.status or {}
-        on = e.power and not e.released
+        on = bool(getattr(e, "led_enabled", True)) and not e.released   # the LED's switch, not the music
         fps = mon.get("fps")
         return {
             "brightness": str(e.brightness),
             "screen": "ON" if e.mirrors.cfg()["enabled"] else "OFF",
+            "auto": "ON" if getattr(e, "auto", False) else "OFF",
             "route_sign": dict(ROUTES)[e.route("sign")],
             "route_screen": dict(ROUTES)[e.route("screen")],
             "light": json.dumps({"state": "ON" if on else "OFF", "brightness": e.brightness,
@@ -311,6 +309,7 @@ class HABridge:
         add("brightness", "number", "LED brightness", min=0, max=255, step=1, mode="slider",
             icon="mdi:brightness-6")
         add("screen", "switch", "LCD screen", icon="mdi:monitor")
+        add("auto", "switch", "Follow music (Auto)", icon="mdi:music-circle")
         add("route_sign", "select", "LED sign shows", options=[lab for _, lab in ROUTES], icon="mdi:sign-text")
         add("route_screen", "select", "LCD screen shows", options=[lab for _, lab in ROUTES], icon="mdi:monitor")
         add("mode", "select", "Power mode", options=[lab for _, lab in MODES], icon="mdi:power-settings")

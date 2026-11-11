@@ -375,7 +375,8 @@ class Engine:
             mirrors.poke()                   # brightness / power may have changed
         data = {"content": content, "brightness": self.brightness,
                 "power": self.power, "released": self.released,
-                "auto": bool(getattr(self, "auto", False))}
+                "auto": bool(getattr(self, "auto", False)),
+                "led_on": bool(getattr(self, "led_enabled", True))}
         try:
             os.makedirs(self._data_dir, exist_ok=True)
             tmp = self._state_path + ".tmp"
@@ -410,6 +411,8 @@ class Engine:
             self.power = bool(data.get("power", True))
             self.released = bool(data.get("released", False))
             self.auto = bool(data.get("auto", False))
+            # the LED's own switch (older state files: Auto meant on, otherwise the power)
+            self.led_enabled = bool(data.get("led_on", True if self.auto else self.power))
             c = data.get("content", {})
             kind = c.get("kind")
             if kind == "text":
@@ -656,35 +659,62 @@ class Engine:
             log.warning("could not persist brightness to config: %s", e)
 
     def set_mode(self, mode: str):
-        """'on' = show content, 'off' = sign dark (Signinator holds it black),
-        'wled' = Signinator stops sending and hands the sign back to WLED."""
-        if mode == "auto":
-            # on while music plays, off when it stops (checked in the render loop)
-            self.auto = True
-            self.released = False
-            self._auto_active = None          # re-evaluate now
-            self._auto_check(force=True)
-            self._save_state()
-            return
-        self.auto = False
+        """Power control for the LED sign (the page's On/Off/WLED/Auto):
+        'on'   LED on, not following the music
+        'off'  LED off (Auto, if on, keeps running for the LCD screen)
+        'auto' follow the music: each display that's switched on lights up only while music plays
+        'wled' Signinator stops sending and hands the sign back to WLED."""
         if mode == "wled":
             self.released = True
             self._save_state()
-            # leave realtime mode now instead of waiting for WLED's timeout
-            self._wled_set({"live": False})
+            self._wled_set({"live": False})   # leave realtime mode now instead of waiting for WLED's timeout
             return
         self.released = False
-        self.set_power(mode == "on")
+        if mode == "auto":
+            self.led_enabled = True
+            self.set_auto(True)
+        elif mode == "on":
+            self.led_enabled = True
+            self.set_auto(False)
+        else:
+            self.set_led(False)
+
+    def set_led(self, on: bool):
+        """The LED sign's own switch. Off stays off whatever the music does."""
+        self.led_enabled = bool(on)
+        self.released = False
+        self._apply_power()
+        self._save_state()
+
+    def set_auto(self, on: bool):
+        """Follow the music (both displays, each only if it's switched on)."""
+        self.auto = bool(on)
+        self._auto_active = None
+        if self.auto:
+            self._auto_check(force=True)
+        self._apply_power()
+        self._save_state()
+
+    def screen_awake(self) -> bool:
+        """Auto mode with no music: the LCD screen sleeps too (its own switch still decides the rest)."""
+        return not getattr(self, "auto", False) or bool(getattr(self, "_auto_active", False))
+
+    def _apply_power(self):
+        want = bool(getattr(self, "led_enabled", True)) and self.screen_awake()
+        if want != self.power:
+            self._set_power(want)
 
     @property
     def mode(self) -> str:
         if self.released:
             return "wled"
+        if not getattr(self, "led_enabled", True):
+            return "off"
         if getattr(self, "auto", False):
             return "auto"
-        return "on" if self.power else "off"
+        return "on"
 
-    AUTO_GRACE = 15.0   # seconds of silence before auto mode turns the sign off
+    AUTO_GRACE = 15.0   # seconds of silence before auto mode turns the displays off
 
     def music_playing(self) -> bool:
         np = getattr(self, "nowplaying", None)
@@ -695,9 +725,9 @@ class Engine:
                     and time.time() - np.info.get("updated", 0) < 15 * 60)
 
     def _auto_check(self, force=False):
-        """Auto mode: turn on when music starts, off when it has stopped for
-        AUTO_GRACE seconds. Only acts on changes, so a manual wake-up stays on
-        until the music next stops."""
+        """Auto mode: displays on when music starts, off when it has stopped for AUTO_GRACE
+        seconds, each only if its own switch is on. Only acts on changes, so a manual wake-up
+        stays on until the music next stops."""
         if not getattr(self, "auto", False):
             return
         now = time.time()
@@ -706,19 +736,21 @@ class Engine:
         active = now - getattr(self, "_auto_last_music", 0.0) < self.AUTO_GRACE
         if force or active != getattr(self, "_auto_active", None):
             self._auto_active = active
-            if active != self.power:
-                log.info("auto: music %s, sign %s", "started" if active else "stopped",
-                         "on" if active else "off")
-                self._set_power(active)
+            want = bool(getattr(self, "led_enabled", True)) and active
+            if want != self.power:
+                log.info("auto: music %s, sign %s", "started" if active else "stopped", "on" if want else "off")
+                self._set_power(want)
+            mirrors = getattr(self, "mirrors", None)
+            if mirrors is not None:
+                mirrors.poke()
 
     def wake(self):
-        """A manual send in auto mode: show it now, stay in auto."""
-        if getattr(self, "auto", False) and not self.power:
+        """A manual send in auto mode with no music: show it now (if the LED is switched on)."""
+        if getattr(self, "auto", False) and not self.power and getattr(self, "led_enabled", True):
             self._set_power(True)
 
     def set_power(self, on: bool):
-        self.auto = False
-        self._set_power(on)
+        self.set_led(on)
 
     def _set_power(self, on: bool):
         if on and not self.power:
