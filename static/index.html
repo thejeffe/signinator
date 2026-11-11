@@ -244,6 +244,18 @@
    <button type="button" id="sRestShow">Show it now</button>
    <button type="button" id="sRestClear">Clear resting look</button>
   </fieldset>
+  <fieldset data-tab="ha"><legend>Stereo power (Home Assistant)</legend>
+   <p class="note wide">Turns the stereo on when music starts and off after a while without music. Uses a Home Assistant long-lived access token (in Home Assistant: your profile → Security → Long-lived access tokens).</p>
+   <label class="chk wide"><input id="sStOn" type="checkbox">Turn the stereo on and off with the music</label>
+   <label>Home Assistant address<input id="sStUrl" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="http://homeassistant.local:8123"></label>
+   <label>Access token<input id="sStTok" type="password" autocomplete="new-password"></label>
+   <label class="wide">Stereo<select id="sStEnt"><option value="">(press Find)</option></select></label>
+   <label>&nbsp;<button type="button" id="sStFind">Find</button></label>
+   <label>Turn off after no music for<select id="sStOff"><option value="60">1 minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="0">Never (only turn on)</option></select></label>
+   <label class="chk wide"><input id="sStOwn" type="checkbox">Only turn it off if Signinator turned it on</label>
+   <div class="row4 wide"><button type="button" id="sStTestOn">Test: on</button><button type="button" id="sStTestOff">Test: off</button></div>
+   <p class="note wide" id="sStNote"></p>
+  </fieldset>
   <fieldset data-tab="ha"><legend>Home Assistant (MQTT)</legend>
    <p class="note">Signinator shows up in Home Assistant as a device (MQTT discovery): power and brightness, message, effect, GIF, album art, song, and settings. Needs the MQTT integration (Mosquitto broker) in Home Assistant; log in with a Home Assistant user.</p>
    <label class="chk wide"><input id="sMqOn" type="checkbox">Connect to Home Assistant</label>

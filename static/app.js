@@ -606,6 +606,13 @@ $("dim").onchange = async () => {
     { const mr = s.mirror || {}; $("sMirror").value = (mr.hosts || []).join(", ");
       $("sMirrorLook").value = mr.look || "led"; $("sMirrorSize").value = String(mr.size || 120); $("sMirrorFps").value = mr.fps || 30; $("sMirrorFpsAuto").checked = mr.fps_auto !== false; $("sMirrorPhotos").checked = mr.photos !== false; $("sMirrorOn").checked = mr.enabled !== false;
       $("sMirrorNote").textContent = (mr.status || []).map(m => `${m.host}: ` + (m.online ? `${m.name || "screen"} ${m.width}×${m.height}` + ` · sending ${m.sent_fps || 0} fps (${mr.fps_auto !== false ? "auto, up to " + m.fps_target : "fixed"}), screen draws ${m.fps ?? 0}` + (m.photo ? " · showing a photo" : mr.look === "hires" ? ` · full resolution ${mr.size}×${mr.size}` : (m.width && (m.width !== s.width || m.height !== s.height) ? ` (scaled from ${s.width}×${s.height})` : "")) : m.online === false ? "offline" + (m.error ? " (" + m.error + ")" : "") : "checking…")).join(" · ") || "Each screen gets the same picture as the sign; its backlight follows the sign's brightness."; }
+    { const st = s.stereo || {}, ss = st.status || {};
+      $("sStOn").checked = !!st.enabled; $("sStUrl").value = st.url || ""; $("sStOwn").checked = st.only_own !== false;
+      $("sStTok").value = ""; $("sStTok").placeholder = st.token_set ? "saved · type to change" : "";
+      $("sStOff").value = String(st.off_after_s ?? 300);
+      const sel = $("sStEnt"); if (st.entity && ![...sel.options].some(o => o.value === st.entity)) { const o = document.createElement("option"); o.value = st.entity; o.textContent = st.entity; sel.appendChild(o); }
+      sel.value = st.entity || "";
+      $("sStNote").textContent = (ss.error ? "Problem: " + ss.error + ". " : "") + (ss.last ? `Last: turned ${ss.last} at ${new Date(ss.at * 1000).toLocaleTimeString()}. ` : "") + (st.enabled ? (ss.music ? "Music is playing." : "No music right now.") : ""); }
     { const mq = s.mqtt || {}, ms = mq.status || {};
       $("sMqOn").checked = !!mq.enabled; $("sMqHost").value = mq.host || ""; $("sMqPort").value = mq.port || 1883;
       $("sMqUser").value = mq.username || ""; $("sMqBase").value = mq.base || "signinator";
@@ -797,6 +804,9 @@ $("dim").onchange = async () => {
         routing: { sign: $("sRouteSign").value, screen: $("sRouteScreen").value },
         mirror: { hosts: $("sMirror").value.split(/[\s,]+/).map(h => h.trim()).filter(Boolean), look: $("sMirrorLook").value,
                   size: +$("sMirrorSize").value, fps: Math.max(5, Math.min(60, +$("sMirrorFps").value || 30)), fps_auto: $("sMirrorFpsAuto").checked, photos: $("sMirrorPhotos").checked, enabled: $("sMirrorOn").checked },
+        stereo: Object.assign({ enabled: $("sStOn").checked, url: $("sStUrl").value.trim(), entity: $("sStEnt").value,
+                                off_after_s: +$("sStOff").value, only_own: $("sStOwn").checked },
+                              $("sStTok").value.trim() ? { token: $("sStTok").value.trim() } : {}),
         mqtt: Object.assign({ enabled: $("sMqOn").checked, host: $("sMqHost").value.trim(), port: +$("sMqPort").value || 1883,
                               username: $("sMqUser").value.trim(), base: $("sMqBase").value.trim().toLowerCase() || "signinator" },
                             $("sMqPass").value ? { password: $("sMqPass").value } : {}),
@@ -823,3 +833,32 @@ if (["#text", "#fx", "#gif"].includes(location.hash)) { setView(location.hash.sl
 else try { let v = localStorage.getItem("signView"); if (v === "image") v = "gif"; if (v === "text" || v === "fx" || v === "gif") { setView(v); VIEW_SET = true; } } catch (e) {}
 sizeCanvas();
 loadState().then(pollFrames);
+
+// ---- stereo power: pick the entity, test it (saves the address/token first so Find works before Save) ----
+async function stereoSaveConn() {
+  const body = { url: $("sStUrl").value.trim() };
+  if ($("sStTok").value.trim()) body.token = $("sStTok").value.trim();
+  if ($("sStEnt").value) body.entity = $("sStEnt").value;
+  await postJSON("/api/config", { stereo: body });
+}
+$("sStFind").addEventListener("click", async () => {
+  const note = $("sStNote"); note.textContent = "Asking Home Assistant…";
+  try {
+    await stereoSaveConn();
+    const r = await fetch("/api/stereo/entities"); const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    const sel = $("sStEnt"), want = sel.value;
+    sel.innerHTML = '<option value="">(pick the stereo)</option>' + j.entities.map(e => `<option value="${e.id}">${e.name.replace(/</g, "&lt;")} · ${e.id} (${e.state})</option>`).join("");
+    if (want) sel.value = want;
+    note.textContent = `Found ${j.entities.length} on/off devices. Pick the stereo, then Save.`;
+  } catch (e) { note.textContent = e.message; }
+});
+for (const [id, on] of [["sStTestOn", true], ["sStTestOff", false]]) $(id).addEventListener("click", async () => {
+  const note = $("sStNote"); note.textContent = "Sending…";
+  try {
+    await stereoSaveConn();
+    const r = await fetch("/api/stereo/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    note.textContent = `The stereo is ${j.state}.`;
+  } catch (e) { note.textContent = e.message; }
+});

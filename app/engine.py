@@ -81,6 +81,8 @@ class Engine:
         self.mirrors = Mirrors(self)  # extra screens showing the same picture (e.g. Matrixinator)
         from .ha import HABridge
         self.ha = HABridge(self)      # Home Assistant over MQTT (off until set up)
+        from .stereo import Stereo
+        self.stereo = Stereo(self)    # turns the stereo (a Home Assistant entity) on with the music
         # covers are now named by picture: convert the saved ones (and the hidden list) once
         threading.Thread(target=lambda: (time.sleep(3), self.nowplaying.migrate_ids()), daemon=True).start()
 
@@ -795,6 +797,8 @@ class Engine:
             self.ha.settings_changed()
         if "mirror" in patch:
             self.mirrors.sync_hosts()
+        if "stereo" in patch:
+            self.stereo.settings_changed()
 
     # ---- render loop ----
     def _frame_to_bytes(self, img: Image.Image) -> bytes:

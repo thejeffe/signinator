@@ -124,6 +124,7 @@ def get_state():
         "relay": dict(engine.relay.status, settings=engine.relay.cfg()),
         "mqtt": dict(engine.ha.public_cfg(), status=engine.ha.status),
         "mirror": dict(engine.mirrors.cfg(), status=engine.mirrors.status()),
+        "stereo": dict(engine.stereo.public_cfg(), status=engine.stereo.status),
         "routing": {"sign": engine.route("sign"), "screen": engine.route("screen"),
                     "showing": {"sign": engine.shows("sign"), "screen": engine.shows("screen")}},
         "mapping": engine.cfg.get("mapping", {}),
@@ -262,6 +263,25 @@ def nowplaying_block(payload: dict = Body(...)):
 @app.get("/api/nowplaying")
 def nowplaying_get():
     return engine.nowplaying.status()
+
+
+@app.get("/api/stereo/entities")
+def stereo_entities():
+    """On/off entities in Home Assistant (to pick the stereo)."""
+    try:
+        return {"entities": engine.stereo.entities()}
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": "Couldn't ask Home Assistant: %s" % (getattr(e, "reason", None) or e)}, status_code=502)
+
+
+@app.post("/api/stereo/test")
+def stereo_test(payload: dict = Body(...)):
+    """Turn the stereo on or off now (from the settings page)."""
+    try:
+        engine.stereo.turn(bool(payload.get("on")), "(test)")
+        return {"ok": True, "state": engine.stereo.entity_state()}
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": "Home Assistant: %s" % (getattr(e, "reason", None) or e)}, status_code=502)
 
 
 @app.get("/api/nowplaying/events")
@@ -562,7 +582,7 @@ def post_power(payload: dict = Body(...)):
 def post_config(patch: dict = Body(...)):
     allowed = {k: v for k, v in patch.items()
                if k in {"mapping", "wled", "gamma", "brightness", "fps", "fps_auto",
-                        "color_correction", "nowplaying", "airplay", "relay", "audio", "dither", "mqtt", "mirror", "routing"}}
+                        "color_correction", "nowplaying", "airplay", "relay", "audio", "dither", "mqtt", "mirror", "routing", "stereo"}}
     if "fps_auto" in allowed:
         allowed["fps_auto"] = bool(allowed["fps_auto"])
     if "fps" in allowed:
@@ -651,6 +671,32 @@ def post_config(patch: dict = Body(...)):
         if "token" in np_cfg:
             clean["token"] = str(np_cfg["token"] or "")[:200]
         allowed["nowplaying"] = clean
+    st = allowed.get("stereo")
+    if st is not None:
+        if not isinstance(st, dict):
+            return JSONResponse({"ok": False, "error": "stereo must be an object"}, status_code=400)
+        clean = {}
+        for k in ("enabled", "only_own"):
+            if k in st:
+                clean[k] = bool(st[k])
+        if "url" in st:
+            u = str(st["url"] or "").strip().rstrip("/")
+            if u and not re.match(r"^https?://[A-Za-z0-9.-]+(:\d{1,5})?$", u):
+                return JSONResponse({"ok": False, "error": "Home Assistant address: like http://homeassistant.local:8123"}, status_code=400)
+            clean["url"] = u
+        if "entity" in st:
+            ent = str(st["entity"] or "").strip()
+            if ent and not re.match(r"^[a-z_]+\.[a-z0-9_]+$", ent):
+                return JSONResponse({"ok": False, "error": "Stereo: pick an entity like switch.main_stereo"}, status_code=400)
+            clean["entity"] = ent
+        if st.get("token"):                     # empty = keep the saved one
+            clean["token"] = str(st["token"]).strip()[:400]
+        if "off_after_s" in st:
+            try:
+                clean["off_after_s"] = max(0, min(24 * 3600, int(st["off_after_s"])))
+            except (TypeError, ValueError):
+                return JSONResponse({"ok": False, "error": "off delay must be a number"}, status_code=400)
+        allowed["stereo"] = clean
     ro = allowed.get("routing")
     if ro is not None:
         if not isinstance(ro, dict):

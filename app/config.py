@@ -31,6 +31,8 @@ DEFAULTS = {
     "fps_auto": True,
     "audio": {"auto": True, "delay_ms": 1500, "offset_ms": 0},
     "mirror": {"hosts": []},
+    "stereo": {"enabled": False, "url": "http://homeassistant.local:8123", "token": "", "entity": "",
+               "off_after_s": 300, "only_own": True},
     "mqtt": {"enabled": False, "host": "homeassistant.local", "port": 1883, "username": "",
              "password": "", "base": "signinator", "prefix": "homeassistant"},
     "relay": {"target": "", "volume": 60, "codec": "alac", "volume_mode": "audio", "volume_range_db": 30, "audio_pipe": "/var/lib/signinator-airplay/audio"},
