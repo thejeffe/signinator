@@ -133,6 +133,8 @@ class Mirrors:
     def follows_sign(self) -> bool:
         """The screen can take the sign's own frames when both show the same thing."""
         e = self.e
+        if not e.power or e.released:
+            return False                     # the sign is off (or WLED's): the screen renders its own
         return e.shows("screen") == e.shows("sign")
 
     def send(self, frame: Image.Image):
@@ -168,7 +170,8 @@ class Mirrors:
                 items = list(self._targets.items())
             e = self.e
             c = self.cfg()
-            want_state = {"on": bool(c["enabled"] and e.power and not e.released and e.shows("screen") != "dark"),
+            # the screen's own toggle (LCD screen) decides; the LED sign's power doesn't
+            want_state = {"on": bool(c["enabled"] and e.shows("screen") != "dark"),
                           "bri": int(e.brightness)}
             # full resolution is drawn as LED dots too (the LED feel at any size)
             want_look = {"look": "pixels", "w": c["size"], "h": c["size"], "shape": "dots"} \
@@ -233,7 +236,7 @@ class Mirrors:
             t0 = time.monotonic()
             with self._lock:
                 any_on = c["enabled"] and any(t["online"] for t in self._targets.values())
-            photo = c["photos"] and any_on and e.power and not e.released and self._is_photo()
+            photo = c["photos"] and any_on and self._is_photo()
             if photo != self.photo_active:
                 # LED content and photos have different speeds: measure again from the maximum
                 self._fps_target, self._fps_changed = None, time.monotonic()
@@ -253,7 +256,7 @@ class Mirrors:
             # LED content drawn here: the higher-resolution look, or (sign resolution) when the screen
             # shows something other than the sign (routing), else the sign's own frames are sent
             own = c["look"] == "hires" or not self.follows_sign()
-            if not own or not any_on or not (e.power and not e.released) or e.shows("screen") == "dark":
+            if not own or not any_on or e.shows("screen") == "dark":
                 self._hi_key, self._hi_scene, self.hires_fps = None, None, 0.0
                 time.sleep(0.25)
                 continue
