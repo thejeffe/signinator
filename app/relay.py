@@ -101,6 +101,7 @@ class Relay:
         threading.Thread(target=self._vol_loop, daemon=True, name="relay-volume").start()
         threading.Thread(target=self._loop, daemon=True, name="relay").start()
         threading.Thread(target=self._name_loop, daemon=True, name="relay-name").start()
+        threading.Thread(target=self._watch_loop, daemon=True, name="relay-watch").start()
 
     # ---- the name phones see: "<target> w/Art", or "Signinator" when off ----
     def airplay_name(self) -> str:
@@ -265,6 +266,54 @@ class Relay:
         self._set("playing", target=target, address="%s:%d" % (sp["address"], sp["port"]),
                   error=None)
         return proc
+
+    # ---- heartbeat: is the speaker still there? ----
+    WATCH_S = 5.0
+
+    def _watch_loop(self):
+        """While relaying: check the speaker every few seconds. If it stops answering, or
+        restarted (an airplay-esp32 reports its uptime), restart the sender: the old AirPlay
+        session is gone, and a new one starts with the next audio once the speaker is back."""
+        import socket
+        fails, last_up = 0, None
+        while True:
+            time.sleep(self.WATCH_S)
+            try:
+                fails, last_up = self._watch_once(fails, last_up)
+            except Exception as e:  # noqa: BLE001 - the watchdog must keep running
+                log.warning("relay watchdog: %s", e)
+
+    def _watch_once(self, fails, last_up):
+        import socket
+        if True:
+            addr = self.status.get("address") if self._proc and self.status.get("state") == "playing" else None
+            if not addr:
+                return 0, None
+            host, _, port = addr.rpartition(":")
+            ok = True
+            try:
+                socket.create_connection((host, int(port)), timeout=3).close()
+            except OSError:
+                ok = False
+            restarted = False
+            if ok:
+                try:
+                    with urllib.request.urlopen("http://%s/api/system/info" % host, timeout=3) as r:
+                        up = int(json.loads(r.read()).get("info", {}).get("uptime_s"))
+                    restarted = last_up is not None and up < last_up
+                    last_up = up
+                except Exception:  # noqa: BLE001 - not an airplay-esp32: the port check is enough
+                    pass
+            fails = 0 if ok else fails + 1
+            if restarted or fails >= 2:
+                why = "the speaker restarted" if restarted else "the speaker stopped answering"
+                log.info("relay: %s, restarting the sender", why)
+                with self._lock:
+                    if self._proc:
+                        self._stop(why)
+                        self._set("idle", address=None, error=why)
+                fails, last_up = 0, None
+        return fails, last_up
 
     def _drain_stderr(self, proc):
         for line in proc.stderr:

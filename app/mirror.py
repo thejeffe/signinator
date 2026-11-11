@@ -185,7 +185,12 @@ class Mirrors:
             fps_seen = [t["fps"] for _, t in items if t["online"] and t["fps"] is not None
                         and t.get("uptime", 0) >= 20]
             self._adapt_fps(min(fps_seen) if fps_seen else None)
+            heartbeat = time.monotonic() - getattr(self, "_beat_at", 0) >= 30
+            if heartbeat:
+                self._beat_at = time.monotonic()
             for host, t in items:
+                if heartbeat:
+                    t["sent"] = {}                   # re-send on/brightness/look/song every 30 s
                 info = read_wled(host)
                 was = t["online"]
                 t["online"] = bool(info.get("ok"))
@@ -341,7 +346,7 @@ class Mirrors:
             else:
                 self._http_photo(h, jpeg)
 
-    def _stream_photo(self, host, t, jpeg, scale):
+    def _stream_photo(self, host, t, jpeg, scale, retry=True):
         s = t.get("photo_sock")
         try:
             if s is None:
@@ -359,6 +364,8 @@ class Mirrors:
             except OSError:
                 pass
             t["photo_sock"] = None
+            if retry and s is not None:             # a stale connection (screen restarted): once more, fresh
+                self._stream_photo(host, t, jpeg, scale, retry=False)
 
     def _http_photo(self, h, jpeg: bytes):
         b = "----signinator%d" % int(time.time() * 1000)

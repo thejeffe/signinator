@@ -169,6 +169,10 @@ class Engine:
         """Called by the monitor after each successful read. With auto_geometry
         on, follow the controller's 2D matrix size."""
         self.wled_info = info
+        try:
+            self._wled_heartbeat(info)
+        except Exception as e:  # noqa: BLE001
+            log.warning("WLED heartbeat: %s", e)
         # WLED dithering: (re)send the settings if WLED lost them (restart) or differs
         want = self.wled_dither_want()
         have = info.get("dither")
@@ -335,7 +339,18 @@ class Engine:
         wled: WLED's dither firmware does gamma, white balance and dimming (bri16)."""
         mode = self.dither_cfg()["mode"]
         bri = self.brightness if mode == "off" else 255
-        self._wled_set({"bri": bri, "v": False, "dither": self.wled_dither_want()})
+        self._wled_set({"on": True, "bri": bri, "v": False, "dither": self.wled_dither_want()})
+
+    def _wled_heartbeat(self, info):
+        """After a WLED restart it may come up off, or at its own brightness: set them again."""
+        st = info.get("state")
+        if not st or self.released:
+            return
+        want_bri = self.brightness if self.dither_cfg()["mode"] == "off" else 255
+        if st.get("on") is False or (st.get("bri") is not None and int(st["bri"]) != want_bri):
+            log.info("WLED is %s at brightness %s: setting it on at %s again",
+                     "on" if st.get("on") else "off", st.get("bri"), want_bri)
+            self._sync_wled_bri()
 
     def _wled_set(self, state: dict):
         """Best-effort push to WLED's JSON state API (e.g. brightness)."""

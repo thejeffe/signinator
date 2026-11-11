@@ -35,6 +35,10 @@ def read_wled(host: str) -> dict:
     try:
         info = _get(host, "/json/info")
         cfg = _get(host, "/json/cfg")
+        try:
+            state = _get(host, "/json/state")      # on / brightness, for the heartbeat
+        except Exception:  # noqa: BLE001
+            state = {}
     except Exception as e:  # noqa: BLE001 - report any failure to the UI
         msg = getattr(e, "reason", None) or str(e)
         return {"ok": False, "host": host, "error": str(msg)}
@@ -60,6 +64,7 @@ def read_wled(host: str) -> dict:
         "realtime": bool(live.get("en")), "ledMaps": bool(live.get("rlm")),
         "dither": info.get("dither"),     # None = stock WLED (no temporal dithering)
         "photoPort": info.get("photoPort"),   # Matrixinator: TCP port for the photo stream
+        "state": {"on": state.get("on"), "bri": state.get("bri")} if state else None,
         "realtimeGamma": not live.get("no-gc"),
         "matrix": mx, "panels": panels, "geometry": geometry,
         "outputs": [{"start": o.get("start"), "len": o.get("len"),
