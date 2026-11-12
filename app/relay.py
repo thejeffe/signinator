@@ -104,9 +104,16 @@ class Relay:
         threading.Thread(target=self._name_loop, daemon=True, name="relay-name").start()
         threading.Thread(target=self._watch_loop, daemon=True, name="relay-watch").start()
 
-    # ---- the name phones see: "<target> w/Art", or "Signinator" when off ----
+    # ---- the name phones see: the chosen name, else "<target> w/Art", or "Signinator" when off ----
+    @staticmethod
+    def _clean_name(s) -> str:
+        return re.sub(r'["\\\x00-\x1f]', "", str(s or "")).strip()[:60]
+
     def airplay_name(self) -> str:
-        t = (self.cfg().get("target") or "").replace('"', "").replace("\\", "").strip()
+        own = self._clean_name(self.cfg().get("airplay_name"))
+        if own:
+            return own
+        t = self._clean_name(self.cfg().get("target"))
         return (t + NAME_SUFFIX) if t else BASE_NAME
 
     # shairport-sync `general` settings Signinator manages: pass the audio

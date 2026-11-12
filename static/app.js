@@ -647,7 +647,7 @@ $("dim").onchange = async () => {
     try { const st = await api("/api/state"); fill(st); renderWledLinks(); fillRest(st.rest); syncRefresh(); loadArtHistory(); { const au = st.audio || {};
       $("sAudioAuto").checked = au.auto !== false; $("sAudioDelay").value = au.delay_ms ?? 1500; $("sAudioOff").value = au.offset_ms ?? 0;
       $("sAudioNote").textContent = `Music effects run ${au.current_ms ?? 0} ms behind the audio Signinator hears` +
-        (au.latency_ms != null ? ` (speaker latency ${au.latency_ms} ms + ${au.backlog_ms || 0} ms queued for the relay).` : (au.auto !== false ? ". The AirPlay delay is measured while the relay is playing." : ".")); } $("sRelayVol").value = (st.relay && st.relay.settings && st.relay.settings.volume) ?? 60; $("sRelayCodec").value = (st.relay && st.relay.settings && st.relay.settings.codec) || "alac"; $("sRelayVolMode").value = (st.relay && st.relay.settings && st.relay.settings.volume_mode) || "audio"; loadSpeakers(false); $("sSave").disabled = false; }
+        (au.latency_ms != null ? ` (speaker latency ${au.latency_ms} ms + ${au.backlog_ms || 0} ms queued for the relay).` : (au.auto !== false ? ". The AirPlay delay is measured while the relay is playing." : ".")); } $("sRelayVol").value = (st.relay && st.relay.settings && st.relay.settings.volume) ?? 60; $("sRelayCodec").value = (st.relay && st.relay.settings && st.relay.settings.codec) || "alac"; $("sRelayVolMode").value = (st.relay && st.relay.settings && st.relay.settings.volume_mode) || "audio"; $("sRelayName").value = (st.relay && st.relay.settings && st.relay.settings.airplay_name) || ""; loadSpeakers(false); $("sSave").disabled = false; }
     catch (e) { $("sSave").disabled = true; say(sMsg, "Can't reach Signinator.", true); }
     dlg.showModal();
   }
@@ -813,7 +813,7 @@ $("dim").onchange = async () => {
         fps: Math.max(5, Math.min(240, +$("sFps").value || 40)), fps_auto: $("sFpsAuto").checked,
         audio: { auto: $("sAudioAuto").checked, delay_ms: Math.max(0, Math.min(5000, +$("sAudioDelay").value || 0)),
                  offset_ms: Math.max(-2000, Math.min(2000, +$("sAudioOff").value || 0)) },
-        relay: { target: $("sRelay").value, volume: Math.max(0, Math.min(100, +$("sRelayVol").value || 0)), codec: $("sRelayCodec").value, volume_mode: $("sRelayVolMode").value },
+        relay: { target: $("sRelay").value, volume: Math.max(0, Math.min(100, +$("sRelayVol").value || 0)), codec: $("sRelayCodec").value, volume_mode: $("sRelayVolMode").value, airplay_name: $("sRelayName").value.trim() },
         nowplaying: Object.assign({ enabled: $("sNpOn").checked, mode: $("sNpMode").value, hold: +$("sNpHold").value || 0,
                                     enhance: $("sNpEnh").checked, lift: $("sNpLift").checked,
                                     show: $("sNpShow").value, brief_s: Math.max(1, Math.min(600, +$("sNpBrief").value || 10)),

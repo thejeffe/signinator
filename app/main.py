@@ -639,6 +639,8 @@ def post_config(patch: dict = Body(...)):
             clean["codec"] = rl["codec"]
         if rl.get("volume_mode") in ("audio", "speaker"):
             clean["volume_mode"] = rl["volume_mode"]
+        if "airplay_name" in rl:     # the AirPlay speaker name phones see ("" = "<speaker> w/Art")
+            clean["airplay_name"] = re.sub(r'["\\\x00-\x1f]', "", str(rl["airplay_name"] or "")).strip()[:60]
 
         allowed["relay"] = clean
     np_cfg = allowed.get("nowplaying")

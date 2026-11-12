@@ -35,7 +35,7 @@ DEFAULTS = {
                "off_after_s": 300, "only_own": True},
     "mqtt": {"enabled": False, "host": "homeassistant.local", "port": 1883, "username": "",
              "password": "", "base": "signinator", "prefix": "homeassistant"},
-    "relay": {"target": "", "volume": 60, "codec": "alac", "volume_mode": "audio", "volume_range_db": 30, "audio_pipe": "/var/lib/signinator-airplay/audio"},
+    "relay": {"target": "", "airplay_name": "", "volume": 60, "codec": "alac", "volume_mode": "audio", "volume_range_db": 30, "audio_pipe": "/var/lib/signinator-airplay/audio"},
 }
 
 

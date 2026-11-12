@@ -179,8 +179,9 @@
    <p class="note wide" id="sRouteNote"></p>
   </fieldset>
   <fieldset data-tab="music"><legend>Music relay (AirPlay)</legend>
-   <p class="note">Signinator's AirPlay speaker takes the name of the speaker you pick here plus “ w/Art” (for example “Marantz Stereo w/Art”). Pick only that one on your phone: the sign shows the album art and the music plays on the speaker.</p>
+   <p class="note">Phones see Signinator as an AirPlay speaker. Pick only that one on your phone, not the real speaker too: the sign shows the album art and the music plays on the speaker you choose here.</p>
    <label class="wide">Play the music on<select id="sRelay"><option value="">Off (sign only, no sound)</option></select></label>
+   <label class="wide">Name phones see<input id="sRelayName" type="text" maxlength="60" autocomplete="off" placeholder="the speaker's name + “ w/Art”"></label>
    <label>Speaker volume<input id="sRelayVol" type="number" min="0" max="100" inputmode="numeric"></label>
    <label>Phone volume slider<select id="sRelayVolMode"><option value="audio">Adjusts the music (works with any speaker)</option><option value="speaker">Sets the speaker's volume (needs ESP32 firmware update)</option></select></label>
    <label class="chk wide"><input id="sAudioAuto" type="checkbox">Match the music effects to the AirPlay delay automatically</label>
