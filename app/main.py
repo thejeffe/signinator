@@ -94,6 +94,7 @@ def get_state():
     w = engine.cfg.get("wled", {})
     return {
         "content": engine.state,
+        "screen_content": engine.screen_state,     # None: the LCD shows the same as the sign
         "brightness": engine.brightness,
         "power": engine.power,
         "mode": engine.mode,
@@ -159,10 +160,16 @@ def get_fonts():
     return {"fonts": [{"id": k, "name": v[0]} for k, v in FONTS.items()]}
 
 
+def _target(p) -> str:
+    """Which display a send goes to: both (default) | sign (the LED sign) | screen (the LCD)."""
+    t = (p or {}).get("target")
+    return t if t in ("both", "sign", "screen") else "both"
+
+
 @app.post("/api/text")
 def post_text(payload: dict = Body(...)):
-    engine.set_text(**_text_args(payload))
-    return {"ok": True, "state": engine.state}
+    engine.set_text(target=_target(payload), **_text_args(payload))
+    return {"ok": True, "state": engine.state, "screen": engine.screen_state}
 
 
 # ---- now playing (album art from AirPlay) ----
@@ -314,8 +321,9 @@ def effects_list():
 
 @app.post("/api/effect")
 def effect_post(payload: dict = Body(...)):
-    engine.set_effect(payload)
-    return {"ok": True, "state": engine.state}
+    target = _target(payload)
+    engine.set_effect({k: v for k, v in payload.items() if k != "target"}, target)
+    return {"ok": True, "state": engine.state, "screen": engine.screen_state}
 
 
 @app.post("/api/preview/effect")
@@ -466,10 +474,10 @@ def _gif_args(p: dict):
 @app.post("/api/gif")
 def gif_post(payload: dict = Body(...)):
     try:
-        engine.set_gif(*_gif_args(payload))
+        engine.set_gif(*_gif_args(payload), target=_target(payload))
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
-    return {"ok": True, "state": engine.state}
+    return {"ok": True, "state": engine.state, "screen": engine.screen_state}
 
 
 @app.post("/api/preview/gif")
@@ -508,21 +516,26 @@ def rest_get():
 
 @app.post("/api/rest")
 def rest_post(payload: dict = Body(...)):
-    """{look?: {kind: text|effect|gif|idle, ...}, after_music?: rest|previous,
-    use_current?: true (save what the sign shows now)}"""
+    """{look?: {kind: text|effect|gif|idle, ...} | null, target?: both|sign|screen,
+    after_music?: rest|previous, use_current?: true (save what that display shows now)}"""
+    target = _target(payload)
     patch = {}
+    look = ...
     if payload.get("use_current"):
-        cur = dict(engine.state)
-        if cur.get("kind") not in _LOOK_KINDS:
-            return JSONResponse({"ok": False, "error": "the sign isn't showing text, an effect or a GIF"},
+        look = dict(engine.screen_content() if target == "screen" else engine.state)
+        if look.get("kind") not in _LOOK_KINDS:
+            return JSONResponse({"ok": False, "error": "it isn't showing text, an effect or a GIF"},
                                 status_code=400)
-        patch["look"] = cur
     elif "look" in payload:
         look = payload["look"]
         if look is not None and (not isinstance(look, dict) or look.get("kind") not in _LOOK_KINDS):
             return JSONResponse({"ok": False, "error": "look.kind must be text, effect, gif or idle"},
                                 status_code=400)
-        patch["look"] = look
+    if look is not ...:
+        if target in ("both", "sign"):
+            patch["look"] = look
+        if target in ("both", "screen"):
+            patch["screen_look"] = look
     if payload.get("after_music") in ("rest", "previous"):
         patch["after_music"] = payload["after_music"]
     rest = dict(engine.rest_cfg())
@@ -549,7 +562,8 @@ def songs_get():
 
 @app.post("/api/cues")
 def cues_post(payload: dict = Body(...)):
-    """Add or change a cue: {id?, title?, artist?, look | use_current, secs? (0 = the whole song), on?}.
+    """Add or change a cue: {id?, title?, artist?, look | use_current, secs? (0 = the whole song),
+    show_on? (sign | screen | both; the LED sign by default), on?}.
     Title only: that song by anyone. Artist only: any song by them. Both: that song by them."""
     import uuid
     from .nowplaying import CUES_MAX, norm
@@ -572,8 +586,10 @@ def cues_post(payload: dict = Body(...)):
     if old is None:   # the same song again: replace its cue
         old = next((c for c in cues if norm(c.get("title")) == norm(title)
                     and norm(c.get("artist")) == norm(artist)), None)
+    show_on = payload.get("show_on") if payload.get("show_on") in ("sign", "screen", "both") else \
+        (old or {}).get("show_on", "sign")
     cue = {"id": old["id"] if old else uuid.uuid4().hex[:10], "title": title, "artist": artist,
-           "look": look, "secs": secs, "on": payload.get("on") is not False}
+           "look": look, "secs": secs, "on": payload.get("on") is not False, "show_on": show_on}
     cues = [cue if c is old else c for c in cues] if old else cues + [cue]
     if len(cues) > CUES_MAX:
         return JSONResponse({"ok": False, "error": "too many song cues"}, status_code=400)
@@ -645,9 +661,10 @@ def get_effects():
 
 @app.post("/api/image")
 async def post_image(file: UploadFile = File(...), mode: str = Form("fit"),
-                     speed: int = Form(24)):
+                     speed: int = Form(24), target: str = Form("both")):
     data = await file.read()
-    engine.set_image(data, mode=mode, speed=int(speed), name=file.filename or "")
+    engine.set_image(data, mode=mode, speed=int(speed), name=file.filename or "",
+                     target=_target({"target": target}))
     return {"ok": True, "state": engine.state}
 
 
@@ -717,8 +734,8 @@ def post_testpattern(payload: dict = Body(...)):
 
 
 @app.post("/api/clear")
-def post_clear():
-    engine.clear()
+def post_clear(payload: dict = Body(default={})):
+    engine.clear(_target(payload))
     return {"ok": True}
 
 
@@ -867,7 +884,21 @@ def post_config(patch: dict = Body(...)):
     if ro is not None:
         if not isinstance(ro, dict):
             return JSONResponse({"ok": False, "error": "routing must be an object"}, status_code=400)
-        allowed["routing"] = {k: ro[k] for k in ("sign", "screen") if ro.get(k) in ("all", "art", "noart")}
+        # "on" (the page's album-art switch): back to how album art was on that display before
+        # it was switched off ("art" = dark without music, or "all"); switching off remembers it
+        last = dict(engine.cfg.get("routing_last") or {})
+        clean = {}
+        for k in ("sign", "screen"):
+            v = ro.get(k)
+            if v == "on":
+                v = last.get(k) if last.get(k) in ("all", "art") else "all"
+            if v in ("all", "art", "noart"):
+                if v == "noart" and engine.route(k) in ("all", "art"):
+                    last[k] = engine.route(k)
+                clean[k] = v
+        allowed["routing"] = clean
+        if last != (engine.cfg.get("routing_last") or {}):
+            allowed["routing_last"] = last
     mr = allowed.get("mirror")
     if mr is not None:
         if not isinstance(mr, dict):

@@ -28,6 +28,11 @@ let S = null;              // last /api/state
 let W = 96, H = 8;         // sign size
 let BRI = 128;             // real brightness 0..255
 let VIEW = "text";
+// which display Send (and Make resting) changes: both | sign (LED) | screen (LCD)
+let TGT = "both";
+try { const t = localStorage.getItem("signinator.target"); if (["both", "sign", "screen"].includes(t)) TGT = t; } catch (e) { /* no storage */ }
+const TGT_NAME = { both: "the sign and the screen", sign: "the LED sign", screen: "the LCD screen" };
+const withTgt = (p) => Object.assign({}, p, { target: TGT });
 
 // ---------- views ----------
 function setView(v) {
@@ -164,7 +169,7 @@ function renderStatus() {
   if (npOn) $("stageTag").textContent = cueOn ? "LIVE · SONG CUE" : "LIVE · NOW PLAYING";
   $("srcText").textContent = cueOn ? `♪ ${np.state === "playing" && np.title ? np.title : np.cue} · cue` :
                              npOn ? `♪ ${np.title || "untitled"}${np.artist ? " — " + np.artist : ""}` + (np.state !== "playing" ? ` (${np.state})` : "")
-                                  : `${W}×${H} · ${what}`;
+                                  : `${W}×${H} · ${what}` + (S.screen_content ? ` · LCD: ${describeLook(S.screen_content)}` : "");
   $("npX").hidden = !npOn;
   $("npX").textContent = cueOn ? "✕ cue" : "✕ art";
   $("npX").title = cueOn ? "Stop the song cue until the next song" : "Stop showing the album art until the next song";
@@ -176,6 +181,7 @@ function renderStatus() {
   $("reloadBtn").classList.toggle("upd", !!upd);
   $("reloadBtn").title = upd ? "A newer version is on the server: tap to reload" : "Reload the app";
   markRest();
+  if (typeof showArtSeg === "function") showArtSeg();
   showAlbumColors();
   $("gifBpm").textContent = S.audio && S.audio.bpm ? `${S.audio.bpm} BPM` : (S.music_playing ? "finding the beat…" : "no music");
   if (VIEW === "gif") showMoves();
@@ -242,15 +248,19 @@ function sameLook(a, b) {
   if (a.kind === "gif") return gifSig(a) === gifSig(b);
   return false;
 }
+const screenLook = () => S && (S.screen_content || S.content);   // what the LCD screen shows
 function isDirty() {
   const look = viewLook();
-  return !!look && !sameLook(S && S.content, look);
+  if (!look) return false;
+  if (TGT === "screen") return !sameLook(screenLook(), look);
+  if (TGT === "sign") return !sameLook(S && S.content, look);
+  return !sameLook(S && S.content, look) || !!(S && S.screen_content && !sameLook(S.screen_content, look));
 }
 function showDirty() {
   const d = isDirty(), t = $("pvTag");
   t.classList.toggle("dirty", d);
   const art = S && S.nowplaying && S.nowplaying.active, cue = S && S.nowplaying && S.nowplaying.cue;
-  t.textContent = (VIEW === "gif" && !GIF_SEL) ? "PICK A GIF" : d ? "NOT SENT YET" : cue ? "SENT · SONG CUE SHOWING NOW" : art ? "SENT · ART SHOWING NOW" : "SAME AS SIGN";
+  t.textContent = (VIEW === "gif" && !GIF_SEL) ? "PICK A GIF" : d ? "NOT SENT YET" : cue ? "SENT · SONG CUE SHOWING NOW" : art ? "SENT · ART SHOWING NOW" : TGT === "screen" ? "SAME AS LCD" : "SAME AS SIGN";
 }
 let pvTimer = 0;
 function schedulePreview() { clearTimeout(pvTimer); pvTimer = setTimeout(sendPreview, 120); }
@@ -273,7 +283,7 @@ document.querySelectorAll(".view").forEach(v => ["input", "change", "click"].for
 })));
 // Sending also turns Signinator on, so a message never goes to a dark sign.
 async function ensureOn() {
-  if (!S) return;
+  if (!S || TGT === "screen") return;   // the LCD alone: leave the LED sign as it is
   if (S.mode === "auto") { if (!S.power) await postJSON("/api/power", { mode: "auto", wake: true }); return; }   // stay in auto
   if (S.mode !== "on") await postJSON("/api/power", { mode: "on" });
 }
@@ -327,9 +337,9 @@ function textParams() {
 }
 async function sendText() {
   try {
-    await postJSON("/api/text", textParams());
+    await postJSON("/api/text", withTgt(textParams()));
     await ensureOn();
-    status("Sent: " + $("text").value);
+    status("Sent to " + TGT_NAME[TGT] + ": " + $("text").value);
     await loadState();
   } catch (e) { status("Couldn't send: " + e.message, true); }
 }
@@ -467,7 +477,7 @@ function showAlbumColors() {
 }
 [["fxSpeed", "fxSpeedV"], ["fxInt", "fxIntV"]].forEach(([a, b]) => $(a).addEventListener("input", () => $(b).textContent = $(a).value));
 $("send-fx").onclick = async () => {
-  try { await postJSON("/api/effect", fxParams()); await ensureOn(); status("Running: " + (FX_NAMES[FX_SEL] || FX_SEL)); await loadState(); }
+  try { await postJSON("/api/effect", withTgt(fxParams())); await ensureOn(); status("Running on " + TGT_NAME[TGT] + ": " + (FX_NAMES[FX_SEL] || FX_SEL)); await loadState(); }
   catch (e) { status("Couldn't start the effect: " + e.message, true); }
 };
 
@@ -568,19 +578,21 @@ $("gifRestore").onclick = async () => {
 };
 $("send-gif").onclick = async () => {
   if (!GIF_SEL) { status("Pick a GIF first", true); return; }
-  try { await postJSON("/api/gif", gifParams()); await ensureOn(); status("Playing: " + GIF_SEL.replace(/[-_]/g, " ")); await loadState(); }
+  try { await postJSON("/api/gif", withTgt(gifParams())); await ensureOn(); status("Playing on " + TGT_NAME[TGT] + ": " + GIF_SEL.replace(/[-_]/g, " ")); await loadState(); }
   catch (e) { status("Couldn't play it: " + e.message, true); }
 };
 
 // ---------- resting state ----------
 function markRest() {
-  const look = S && S.rest && S.rest.look, cur = viewLook();
-  document.querySelectorAll(".restbtn:not(.songbtn)").forEach(b => b.classList.toggle("is-rest", !!look && sameLook(look, cur)));
+  const r = (S && S.rest) || {}, cur = viewLook();
+  const on = TGT === "sign" ? sameLook(r.look, cur) : TGT === "screen" ? sameLook(r.screen_look, cur)
+    : sameLook(r.look, cur) && sameLook(r.screen_look, cur);
+  document.querySelectorAll(".restbtn:not(.songbtn)").forEach(b => b.classList.toggle("is-rest", !!cur && on));
 }
 document.querySelectorAll(".restbtn:not(.songbtn)").forEach(b => b.addEventListener("click", async () => {
   const look = viewLook();
   if (!look) { status("Pick something first", true); return; }
-  try { await postJSON("/api/rest", { look }); status("Resting look saved: " + describeLook(look) + ". The sign shows it when the music stops."); await loadState(); }
+  try { await postJSON("/api/rest", { look, target: TGT }); status("Resting look for " + TGT_NAME[TGT] + ": " + describeLook(look) + ". Shown when the music stops."); await loadState(); }
   catch (e) { status("Couldn't save it: " + e.message, true); }
 }));
 
@@ -600,6 +612,7 @@ function cueFor(title, artist) {   // the same matching as the server: the cue's
   });
   return best;
 }
+const CUE_ON = { sign: "the LED sign", screen: "the LCD screen", both: "the sign and the screen" };
 const cueWhat = (c) => c.title && c.artist ? `“${c.title}” by ${c.artist}` : c.title ? `“${c.title}” (any artist)` : `any song by ${c.artist}`;
 function cueMatchUI() {
   const m = $("cueM").value;
@@ -618,6 +631,7 @@ async function openCue(o) {   // o: {cue?, title?, artist?}
   $("cueM").value = o.match || (CUE_EDIT ? (CUE_EDIT.title && CUE_EDIT.artist ? "both" : CUE_EDIT.title ? "title" : "artist") : "title");
   cueMatchUI();
   const secs = CUE_EDIT ? +CUE_EDIT.secs || 0 : 0;
+  $("cueOn").value = CUE_EDIT ? (CUE_EDIT.show_on || "sign") : (TGT === "both" ? "sign" : TGT);
   $("cueFor").value = secs ? "s" : "0"; $("cueSecs").value = secs || 30; $("cueSecs").disabled = !secs;
   const sel = $("cueLook"), looks = [];
   sel.innerHTML = "";
@@ -650,10 +664,10 @@ $("cueForm").addEventListener("submit", async (ev) => {
   if (m !== "title" && !artist) { say($("cueMsg"), "Type the artist (or tap a recent song).", true); return; }
   if (!look) { say($("cueMsg"), "Pick what to show.", true); return; }
   try {
-    const j = await postJSON("/api/cues", { id: CUE_EDIT && CUE_EDIT.id, title, artist, look,
+    const j = await postJSON("/api/cues", { id: CUE_EDIT && CUE_EDIT.id, title, artist, look, show_on: $("cueOn").value,
       secs: $("cueFor").value === "0" ? 0 : Math.max(1, +$("cueSecs").value || 30) });
     $("cueDlg").close();
-    status(`When ${cueWhat(j.cue)} plays, the sign shows ${describeLook(j.cue.look)}.`);
+    status(`When ${cueWhat(j.cue)} plays, ${CUE_ON[j.cue.show_on || "sign"]} shows ${describeLook(j.cue.look)}.`);
     CUES = j.cues; renderSongs(); loadState();
   } catch (e) { say($("cueMsg"), e.message, true); }
 });
@@ -684,7 +698,7 @@ function renderSongs() {
   const playing = S && S.nowplaying && S.nowplaying.cue_id;
   if (!CUES.length) cl.textContent = "No song cues yet.";
   CUES.forEach(c => cl.appendChild(cueRow(null, cueWhat(c),
-    `${describeLook(c.look)} · ${c.secs ? "first " + c.secs + " s" : "whole song"}`, [
+    `${describeLook(c.look)} on ${CUE_ON[c.show_on || "sign"]} · ${c.secs ? "first " + c.secs + " s" : "whole song"}`, [
       ["Try", async () => { try { await postJSON(`/api/cues/${c.id}/try`, { seconds: 10 }); status(`Showing the cue for ${cueWhat(c)} for 10 seconds`); loadState(); } catch (e) { status(e.message, true); } }, "Show it on the sign for 10 seconds"],
       ["Change", () => openCue({ cue: c })],
       ["Remove", async () => { if (!confirm(`Remove the song cue for ${cueWhat(c)}?`)) return; try { const j = await api(`/api/cues/${c.id}`, { method: "DELETE" }); CUES = j.cues; renderSongs(); loadState(); } catch (e) { status(e.message, true); } }],
@@ -912,8 +926,11 @@ $("dim").onchange = async () => {
   setTab(tab0);
   function fillRest(r) {
     $("sRestAfter").value = (r && r.after_music) || "rest";
-    $("sRestNow").textContent = r && r.look ? `Resting look: ${describeLook(r.look)}.` : "No resting look saved yet. Use ☾ Make resting next to Send.";
-    $("sRestShow").disabled = $("sRestClear").disabled = !(r && r.look);
+    const a = r && r.look, b = r && r.screen_look;
+    $("sRestNow").textContent = !a && !b ? "No resting look saved yet. Use ☾ Make resting next to Send." :
+      sameLook(a, b) || (!a && !b) ? `Resting look (both): ${describeLook(a)}.` :
+      `Resting look: LED sign ${a ? describeLook(a) : "keeps what it shows"} · LCD screen ${b ? describeLook(b) : "keeps what it shows"}.`;
+    $("sRestShow").disabled = $("sRestClear").disabled = !(a || b);
   }
   $("sRestShow").addEventListener("click", async () => {
     try { await postJSON("/api/rest/show", {}); say(sMsg, "Showing the resting look"); loadState(); } catch (e) { say(sMsg, e.message, true); }
@@ -1035,3 +1052,38 @@ for (const [id, on] of [["sStTestOn", true], ["sStTestOff", false]]) $(id).addEv
     note.textContent = `The stereo is ${j.state}.`;
   } catch (e) { note.textContent = e.message; }
 });
+
+// ---------- Send to: both / LED sign / LCD screen ----------
+(function () {
+  const bs = [...document.querySelectorAll("#tgtSeg button")];
+  function sync() {
+    bs.forEach(b => pressed(b, b.dataset.g === TGT));
+    document.querySelector(".tgtrow").classList.toggle("solo", TGT !== "both");
+    document.querySelectorAll(".send .lt").forEach(l => { l.textContent = TGT === "screen" ? "SEND TO LCD" : TGT === "sign" ? "SEND TO LED SIGN" : "SEND TO SIGN"; });
+    if (S) { showDirty(); markRest(); }
+  }
+  bs.forEach(b => b.addEventListener("click", () => {
+    TGT = b.dataset.g;
+    try { localStorage.setItem("signinator.target", TGT); } catch (e) { /* no storage */ }
+    sync();
+  }));
+  sync();
+})();
+
+// ---------- Album art on/off per display (routing: all / art = on, noart = off) ----------
+function showArtSeg() {
+  const ro = (S && S.routing) || {};
+  document.querySelectorAll("#artSeg button").forEach(b => pressed(b, (ro[b.dataset.a] || "all") !== "noart"));
+}
+document.querySelectorAll("#artSeg button").forEach(b => b.addEventListener("click", async () => {
+  const t = b.dataset.a, ro = (S && S.routing) || {}, on = (ro[t] || "all") === "noart";
+  const name = t === "sign" ? "LED sign" : "LCD screen";
+  try {
+    const j = await postJSON("/api/config", { routing: { [t]: on ? "on" : "noart" } });
+    const now = ((j && j.state && j.state.routing) || {})[t];
+    status(!on ? `No album art on the ${name}` : now === "art"
+      ? `The ${name} shows the album art while music plays, and goes dark without music`
+      : `The ${name} shows the album art while music plays, over anything else`);
+    await loadState();
+  } catch (e) { status("Couldn't change it: " + e.message, true); }
+}));

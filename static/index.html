@@ -36,6 +36,8 @@
  </div>
 
  <div class="ctrl" id="ctrl">
+ <div class="tgtrow"><span class="k">Send to</span><div class="seg2" id="tgtSeg" role="group" aria-label="Which display Send changes"><button type="button" data-g="both" aria-pressed="true" title="The LED sign and the LCD screen show the same thing">Both</button><button type="button" data-g="sign" aria-pressed="false" title="Only the LED sign; the LCD screen keeps what it shows">LED sign</button><button type="button" data-g="screen" aria-pressed="false" title="Only the LCD screen; the LED sign keeps what it shows">LCD screen</button></div></div>
+ <div class="tgtrow artrow"><span class="k">Album art</span><div class="seg2" id="artSeg" role="group" aria-label="Which displays show album art"><button type="button" data-a="sign" aria-pressed="false" title="While music plays, the LED sign shows the album art over anything else">🎵 LED sign</button><button type="button" data-a="screen" aria-pressed="false" title="While music plays, the LCD screen shows the album art over anything else">🎵 LCD screen</button></div></div>
  <section class="box pvbox"><div class="bh"><b>Preview</b><span class="tag pv" id="pvTag">SAME AS SIGN</span></div>
   <div class="pvwrap" id="pvwrap"><canvas id="pv" aria-label="Preview of your changes, not sent yet"></canvas></div>
  </section>
@@ -184,13 +186,13 @@
     <div class="arthist" id="artHist"></div></div>
   </fieldset>
   <fieldset data-tab="music"><legend>Song cues</legend>
-   <p class="note">While a chosen song plays, the sign (and screen) show your text, effect or GIF instead of anything else, then go back. Make one with ♪ For a song next to Send, or from a recent song below.</p>
+   <p class="note">While a chosen song plays, the LED sign, the LCD screen or both show your text, effect or GIF instead of anything else, then go back. Make one with ♪ For a song next to Send, or from a recent song below.</p>
    <div class="wide cuelist" id="cueList"></div>
    <div class="wide"><span class="k">Recent songs</span><div class="cuelist" id="songList"></div></div>
   </fieldset>
   <fieldset data-tab="music"><legend>What each display shows</legend>
-   <label>LED sign<select id="sRouteSign"><option value="all">Everything: album art while music plays, else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
-   <label>LCD screen<select id="sRouteScreen"><option value="all">Everything: album art while music plays, else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
+   <label>LED sign<select id="sRouteSign"><option value="all">Album art while music plays (over anything sent), else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
+   <label>LCD screen<select id="sRouteScreen"><option value="all">Album art while music plays (over anything sent), else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
    <p class="note wide" id="sRouteNote"></p>
   </fieldset>
   <fieldset data-tab="music"><legend>Music relay (AirPlay)</legend>
@@ -268,7 +270,7 @@
    <label class="wide">Stereo<select id="sStEnt"><option value="">(press Find)</option></select></label>
    <label>&nbsp;<button type="button" id="sStFind">Find</button></label>
    <label>Turn off after no music for<select id="sStOff"><option value="60">1 minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="0">Never (only turn on)</option></select></label>
-   <label class="chk wide"><input id="sStOwn" type="checkbox">Only turn it off if Signinator turned it on</label>
+   <label class="chk wide"><input id="sStOwn" type="checkbox">Only turn it off after music played through Signinator (even if the stereo was already on); leave it on if it was turned on for something else</label>
    <div class="row4 wide"><button type="button" id="sStTestOn">Test: on</button><button type="button" id="sStTestOff">Test: off</button></div>
    <p class="note wide" id="sStNote"></p>
   </fieldset>
@@ -296,6 +298,7 @@
   </fieldset>
   <fieldset><legend>Show</legend>
    <label class="wide">On the sign<select id="cueLook"></select></label>
+   <label class="wide">Show on<select id="cueOn"><option value="sign">The LED sign</option><option value="screen">The LCD screen</option><option value="both">Both</option></select></label>
    <label>For<select id="cueFor"><option value="0">The whole song</option><option value="s">The first few seconds</option></select></label>
    <label>Seconds<input id="cueSecs" type="number" min="1" max="3600" value="30" inputmode="numeric"></label>
    <p class="note">Then the sign goes back to what it was showing (album art or your content). Sending something while the cue is up ends it until the next song.</p>

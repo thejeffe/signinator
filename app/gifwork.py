@@ -13,7 +13,7 @@ model; this is meant for plain, gradient and simple backgrounds.
 
 find_moves(): finds the dance's own beat (tempo + where the beats fall), the
 way you'd tap along to the GIF, from where moves land (fast motion stopping or
-turning back). Each beat snaps to the frame where a pose really lands, and
+turning back, the bottom of a bob, or either end of a side-to-side sway). Each beat snaps to the frame where a pose really lands, and
 dance_map() turns that into a time warp so each dance beat lands on a music
 beat.
 """
@@ -26,6 +26,11 @@ from PIL import Image, ImageChops, ImageFilter, ImageSequence
 
 WORK = 200            # max side of the analysis copy for the background cut
 MOVE_SIDE = 64        # max side for motion analysis
+MIN_BEAT_S = 0.2      # fastest dance beat
+HALF_MIN, HALF_RATIO = 0.25, 0.25   # moves halfway between beats this clear: they're beats too
+BOB_MIN = 0.08        # a bob this big (of the height) counts as dancing up and down
+BOB_WIN = 0.15        # s either side: the bottom of a bob is the lowest point this close
+BOB_DEPTH = 0.3       # s either side to measure how deep the bob is
 
 
 def _frames(img: Image.Image):
@@ -237,7 +242,74 @@ def _landings(frames):
         stop = max(0.0, mot[i - 1] - mot[i])
         env.append(stop + 0.5 * turn * max(mot[i - 1], mot[i]))
     pk = max(env) or 1.0
-    return [e / pk for e in env], mot
+    env = [e / pk for e in env]
+    # bobs and sways: a character bouncing or swaying to the beat lands at the bottom of each
+    # bob and at each end of a sway, even when the rest of it keeps moving (a turn, a wobble)
+    bob = _bounces(frames, g)
+    if bob:
+        env = [max(e, b) for e, b in zip(env, bob)]
+    return env, mot
+
+
+def _centres(g):
+    """The character's centre of mass (x, y) in each frame, and the frame size. The character
+    is what differs from the background (the colour round the edges of the first frame)."""
+    w, h = g[0].size
+    px0 = g[0].load()
+    edge = sorted([px0[x, 0] for x in range(w)] + [px0[x, h - 1] for x in range(w)] +
+                  [px0[0, y] for y in range(h)] + [px0[w - 1, y] for y in range(h)])
+    bg = edge[len(edge) // 2]
+    cx, cy = [], []
+    for im in g:
+        px = im.load()
+        tot = ax = ay = 0
+        for y in range(h):
+            for x in range(w):
+                if abs(px[x, y] - bg) > 30:
+                    tot += 1
+                    ax += x
+                    ay += y
+        cx.append(ax / tot if tot else w / 2)
+        cy.append(ay / tot if tot else h / 2)
+    return cx, cy, w, h
+
+
+def _extremes(frames, v, size, low_too):
+    """Per frame 0..1: how clearly the value v reaches its high point there (and its low
+    point too when low_too), measured against the swing within BOB_DEPTH s; None when it
+    swings less than BOB_MIN of size."""
+    n = len(frames)
+    span = max(v) - min(v)
+    if span < BOB_MIN * size:
+        return None
+    starts, t = [], 0.0
+    for _, d in frames:
+        starts.append(t)
+        t += d
+    total = t
+    out = []
+    for i in range(n):
+        dist = [abs((starts[j] - starts[i] + total / 2) % total - total / 2) for j in range(n)]
+        near = [v[j] for j in range(n) if 0 < dist[j] <= BOB_WIN]
+        wide = [v[j] for j in range(n) if 0 < dist[j] <= BOB_DEPTH] or [v[i]]
+        best = 0.0
+        if not near or v[i] >= max(near):
+            best = (v[i] - min(wide)) / span          # a high point (the bottom of a bob: y grows down)
+        if low_too and (not near or v[i] <= min(near)):
+            best = max(best, (max(wide) - v[i]) / span)
+        out.append(min(1.0, best))
+    return out
+
+
+def _bounces(frames, g):
+    """Per frame 0..1: how clearly the character lands a bob (the bottom of an up-and-down
+    move) or a sway (either end of a side-to-side move) there, or None when it does neither."""
+    cx, cy, w, h = _centres(g)
+    bob = _extremes(frames, cy, h, low_too=False)
+    sway = _extremes(frames, cx, w, low_too=True)
+    if bob is None and sway is None:
+        return None
+    return [max(a, b) for a, b in zip(bob or [0.0] * len(frames), sway or [0.0] * len(frames))]
 
 
 def find_moves(frames):
@@ -282,15 +354,25 @@ def find_moves(frames):
         if sp < 0.25 or sp > 1.3:
             continue
         win = min(0.3 * sp, max(0.06, 1.05 * md))
+        prior = math.exp(-0.5 * (math.log(sp / 0.5) / math.log(2.2)) ** 2)
         for i in range(n):
             sc = sum(at(starts[i] + k * sp, win) for k in range(N)) / N - mean
-            prior = math.exp(-0.5 * (math.log(sp / 0.5) / math.log(2.2)) ** 2)
             if best is None or sc * prior > best[0]:
                 best = (sc * prior, sc, N, sp, starts[i])
     if best is None:                       # very short loop: one beat per loop
         return {"total": total, "beats": [0.0], "offset": 0.0, "spacing": total,
                 "frames": [0], "steady": 0.0}
     _, sc, N, sp, ph = best
+    # The tempo prior favours ~0.5 s beats, so a fast dance can come out at half time with
+    # every other move skipped. If moves also land halfway between the beats, give each
+    # one its own beat (dance_map then puts two dance beats on one music beat if needed).
+    while 2 * N <= 64 and sp / 2 >= MIN_BEAT_S:
+        w2 = min(0.3 * sp / 2, max(0.06, 1.05 * md))
+        on = sum(at(ph + k * sp, w2) for k in range(N)) / N
+        mid = sum(at(ph + (k + 0.5) * sp, w2) for k in range(N)) / N
+        if mid < HALF_MIN or mid - mean < HALF_RATIO * (on - mean):
+            break
+        N, sp = 2 * N, sp / 2
     # beat 0: move the grid onto the strongest landing within a frame or so
     win = max(md * 1.05, 0.2 * sp)
 

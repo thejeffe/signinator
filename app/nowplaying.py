@@ -293,10 +293,13 @@ class NowPlaying:
         except OSError as e:
             log.warning("couldn't save album colors: %s", e)
 
-    def dismiss(self):
-        """A manual send: stop showing the art until the track changes."""
+    def dismiss(self, target="both"):
+        """A manual send: stop showing the art (and the song cue, if it's on that display)
+        until the track changes."""
         with self._lock:
-            if self._cue_on is not None:
+            cue = self.cue_now() if self._cue_on is not None else None
+            on = cue_displays(cue) if cue else ()
+            if self._cue_on is not None and (target == "both" or target in on):
                 self._cue_dismissed = self._cue_on[1]
                 self._cue_try = None
                 self._cue_on = None
@@ -345,12 +348,13 @@ class NowPlaying:
                 # music stopped, or the brief art time is over: back to resting
                 threading.Thread(target=self.e.music_ended, daemon=True).start()
 
-    def playing_art(self) -> bool:
+    def playing_art(self, firm=False) -> bool:
         """Music is playing and its cover is here (for displays set to "album art only":
-        they show it the whole song, whatever the brief / hold settings)."""
+        they show it the whole song, whatever the brief / hold settings). firm: also when
+        something was sent over it (a display with album art switched on: art wins)."""
         if not self.cfg().get("enabled", True) or not self.art or self._art_stale:
             return False
-        if self._key() == self._dismissed:
+        if not firm and self._key() == self._dismissed:
             return False
         return self.info["state"] == "playing" and time.time() - self.info["updated"] < WATCHDOG
 
@@ -502,8 +506,9 @@ class NowPlaying:
             except Exception as ex:  # noqa: BLE001 - e.g. the GIF was deleted
                 log.warning("can't show the song cue for %r: %s", cue.get("title"), ex)
                 scene = None
-            if scene is not None:
-                self.e.set_cue(scene, cue["look"])
+            on = cue_displays(cue)
+            if scene is not None:            # (built even for the screen alone: checks the look works)
+                self.e.set_cue(scene if "sign" in on else None, cue["look"], on)
                 self._cue_on = want
                 self.event("cue", title=cue.get("title"), song=self._song_key[0])
                 log.info("song cue: %r -> %s", self._song_key[0] if key and key[0] != "try" else "(try)",
@@ -534,6 +539,14 @@ class NowPlaying:
                         colors=["#%02x%02x%02x" % c for c in self.colors],
                         art_sha=self.art_sha,
                         hold_until=self._stop_at if (self.active and self._stop_at) else None)
+
+
+DISPLAYS = {"sign": ("sign",), "screen": ("screen",), "both": ("sign", "screen")}
+
+
+def cue_displays(cue) -> tuple:
+    """Where a cue shows: its "show_on" (sign | screen | both), the LED sign by default."""
+    return DISPLAYS.get((cue or {}).get("show_on"), ("sign",))
 
 
 def norm(s) -> str:

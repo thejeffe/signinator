@@ -135,7 +135,7 @@ class Mirrors:
         e = self.e
         if not e.power or e.released:
             return False                     # the sign is off (or WLED's): the screen renders its own
-        return e.shows("screen") == e.shows("sign")
+        return e.shows("screen") == e.shows("sign") and e.screen_linked()
 
     def send(self, frame: Image.Image):
         c = self.cfg()
@@ -291,7 +291,7 @@ class Mirrors:
         k = e.shows("screen")
         if k == "art":
             return bool(e.nowplaying.art)
-        return k == "content" and e.shown_state().get("kind") in ("gif", "image")
+        return k == "content" and e.screen_content().get("kind") in ("gif", "image")
 
     def _photo_step(self, t0) -> bool:
         """Send the next photo. Returns True when nothing needed sending (a still that's up to date)."""
@@ -326,8 +326,8 @@ class Mirrors:
         e = self.e
         if e.shows("screen") == "art":
             return False                       # album art
-        st = e.shown_state()
-        path = e.gifs.path(st.get("name", "")) if st.get("kind") == "gif" else e._image_path
+        st = e.screen_content()
+        path = e.gifs.path(st.get("name", "")) if st.get("kind") == "gif" else e.image_file(st)
         if st.get("kind") == "gif" and st.get("beat"):
             return True
         try:
@@ -385,7 +385,7 @@ class Mirrors:
         np = e.nowplaying
         k = e.shows("screen")
         ov_key = "art:%s:%s" % (np.art_sha, np.cfg().get("mode")) if k == "art" else k
-        return (size, json.dumps(e.shown_state(), sort_keys=True, default=str), ov_key)
+        return (size, json.dumps(e.screen_content(), sort_keys=True, default=str), ov_key)
 
     def _build(self, W, H):
         """The current content again, rendered at W x H for the screens."""
@@ -399,7 +399,7 @@ class Mirrors:
             return ImageScene(W, H, load_image_bytes(np.art), mode=np.cfg().get("mode", "fill"))
         if k == "dark":
             return SolidScene(W, H, "#000000")
-        st = dict(e.shown_state())
+        st = dict(e.screen_content())
         kind = st.get("kind")
         f = W / max(1, e.w)                      # how much bigger than the sign
         if kind == "text":
@@ -426,7 +426,7 @@ class Mirrors:
                 return ImageScene(W, H, img, mode=st.get("mode", "fit"), rate=st.get("rate", 1.0))
         if kind == "image":
             try:
-                with open(e._image_path, "rb") as fh:
+                with open(e.image_file(st), "rb") as fh:
                     img = load_image_bytes(fh.read())
                 return ImageScene(W, H, img, mode=st.get("mode", "fit"),
                                   speed=max(1, int(int(st.get("speed", 24)) * f)))

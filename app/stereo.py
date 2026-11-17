@@ -6,8 +6,9 @@ Config: stereo: {enabled, url, token (write-only), entity, off_after_s, only_own
   url          e.g. http://homeassistant.local:8123
   entity       e.g. switch.main_stereo (switch, light, input_boolean, media_player, fan, ...)
   off_after_s  seconds of no music before turning it off (0 = never turn off)
-  only_own     only turn it off if Signinator turned it on (don't switch off a stereo
-               someone turned on by hand)
+  only_own     only turn it off after music played through Signinator (it would have turned
+               it on; also when it was already on). A stereo turned on by hand for something
+               else, with no music through Signinator, is left alone
 Music = AirPlay playing or relayed audio (Engine.music_playing)."""
 from __future__ import annotations
 import json
@@ -28,7 +29,7 @@ class Stereo:
     def __init__(self, engine):
         self.e = engine
         self.status = {"state": None, "error": None, "last": None, "at": 0, "music": False}
-        self._own = False                # we turned it on (and haven't turned it off since)
+        self._own = False                # music played since it was last turned off: ours to turn off
         self._music_at = 0.0             # last time music was seen
         self._was_music = False
         self._kick = threading.Event()
@@ -105,7 +106,9 @@ class Stereo:
                 self.status["state"] = state
                 if state != "on":
                     self.turn(True, "(music started)")
-                    self._own = True
+                # ours either way: music played through Signinator, so it turns it off after,
+                # also when the stereo was already on
+                self._own = True
         elif self._was_music or self._music_at:
             off_after = int(c.get("off_after_s") or 0)
             if off_after and self._music_at and now - self._music_at >= off_after:

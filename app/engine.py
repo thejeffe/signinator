@@ -38,8 +38,11 @@ class Engine:
         self.scene = None
         self._override = None    # e.g. album art while music plays; never saved
         self._override_kind = "art"
-        self._cue = None         # a song cue's scene (replaces everything while its song plays); never saved
+        self._cue = None         # a song cue's scene on the sign (replaces everything while its song plays)
         self._cue_look = None
+        self._screen_cue = None  # a song cue's look on the LCD screen
+        # The LCD screen's own content (a look), or None: the same as the sign (linked)
+        self.screen_state = None
         self.state = {"kind": "idle"}
         self._stop = threading.Event()
         # persistent runtime state (content + brightness + power) survives restart
@@ -48,6 +51,7 @@ class Engine:
         os.makedirs(self._data_dir, exist_ok=True)
         self._state_path = os.path.join(self._data_dir, "state.json")
         self._image_path = os.path.join(self._data_dir, "current_image")
+        self._screen_image_path = os.path.join(self._data_dir, "screen_image")
         # user-uploaded custom emoji live here (their own images)
         from . import customglyphs
         self._emoji_dir = os.path.join(self._data_dir, "custom_emoji")
@@ -124,17 +128,62 @@ class Engine:
             self._override_kind = kind
 
     # ---- song cue: a look shown instead of everything while a chosen song plays ----
-    def set_cue(self, scene, look):
+    def set_cue(self, scene, look, on=("sign",)):
+        """on: the displays the cue shows on ("sign", "screen")."""
         with self._lock:
-            self._cue, self._cue_look = scene, dict(look)
+            sign = "sign" in on and scene is not None
+            self._cue, self._cue_look = (scene, dict(look)) if sign else (None, None)
+            self._screen_cue = dict(look) if "screen" in on else None
 
     def clear_cue(self):
         with self._lock:
-            self._cue, self._cue_look = None, None
+            self._cue, self._cue_look, self._screen_cue = None, None, None
 
-    def shown_state(self) -> dict:
-        """The content look on the displays: a song cue's look while one is up, else the user's."""
-        return self._cue_look if self._cue is not None and self._cue_look else self.state
+    def screen_content(self) -> dict:
+        """The look on the LCD screen: its song cue, its own content, or the sign's."""
+        if self._screen_cue:
+            return self._screen_cue
+        return self.screen_state if self.screen_state is not None else self.state
+
+    def screen_linked(self) -> bool:
+        """The screen shows exactly the sign's content (so it can take the sign's frames)."""
+        return self.screen_state is None and (self._cue is None) == (self._screen_cue is None)
+
+    def image_file(self, st) -> str:
+        return self._screen_image_path if (st or {}).get("file") == "screen" else self._image_path
+
+    # ---- which display a send goes to ----
+    TARGETS = ("both", "sign", "screen")
+
+    def _put(self, target, scene, state):
+        """Show content on the sign, the LCD screen or both. Sending to one display leaves the
+        other showing what it had; "both" links them again."""
+        target = target if target in self.TARGETS else "both"
+        self._manual(target)
+        with self._lock:
+            if target != "screen":
+                if target == "sign" and self.screen_state is None:
+                    self._unlink_screen()
+                self.scene, self.state = scene, state
+            if target == "both":
+                self.screen_state = None
+            elif target == "screen":
+                self.screen_state = dict(state)
+        self._save_state()
+
+    def _unlink_screen(self):
+        """The sign gets something else: the screen keeps showing the sign's current content."""
+        st = dict(self.state)
+        if st.get("kind") == "test":
+            st = {"kind": "idle"}
+        if st.get("kind") == "image":
+            try:
+                import shutil
+                shutil.copyfile(self.image_file(st), self._screen_image_path)
+                st["file"] = "screen"
+            except OSError:
+                st = {"kind": "idle"}
+        self.screen_state = st
 
     ROUTES = ("all", "art", "noart")
 
@@ -145,18 +194,21 @@ class Engine:
         return m if m in self.ROUTES else "all"
 
     def shows(self, target: str) -> str:
-        """What a display shows right now: "art", "content" (the animation/text/GIF) or "dark"."""
-        if self._cue is not None:
+        """What a display shows right now: "art", "content" (the animation/text/GIF) or "dark".
+        A display with album art on (routing all/art) shows the cover the whole time music
+        plays, over anything sent to it (only a song cue for that display beats it); in
+        "brief" mode only for the brief art time."""
+        if (self._cue is not None) if target == "sign" else (self._screen_cue is not None):
             return "content"                 # a song cue replaces album art and routing
         m = self.route(target)
-        art_on = self._override is not None and getattr(self, "_override_kind", "art") == "art"
         if m == "noart":
             return "content"
-        if m == "art":
-            # album art only: the cover the whole time music plays (not just the brief flash)
-            np = getattr(self, "nowplaying", None)
-            return "art" if art_on or (np is not None and np.playing_art()) else "dark"
-        return "art" if art_on else "content"
+        art_on = self._override is not None and getattr(self, "_override_kind", "art") == "art"
+        np = getattr(self, "nowplaying", None)
+        whole_song = np is not None and np.cfg().get("show") != "brief" and np.playing_art(firm=True)
+        if art_on or whole_song or (m == "art" and np is not None and np.playing_art()):
+            return "art"
+        return "dark" if m == "art" else "content"
 
     def _sign_scene(self):
         ov = self._override
@@ -173,11 +225,12 @@ class Engine:
         with self._lock:
             self._override = None
 
-    def _manual(self):
-        """The user sent something: it wins over album art until the track changes."""
+    def _manual(self, target="both"):
+        """The user sent something: it wins over album art (and a song cue on that display)
+        until the track changes."""
         np = getattr(self, "nowplaying", None)
         if np is not None and not getattr(self, "_restoring", False):
-            np.dismiss()
+            np.dismiss(target)
 
     # ---- WLED geometry ----
     def _wled_host(self):
@@ -450,7 +503,7 @@ class Engine:
         mirrors = getattr(self, "mirrors", None)
         if mirrors is not None:
             mirrors.poke()                   # brightness / power may have changed
-        data = {"content": content, "brightness": self.brightness,
+        data = {"content": content, "screen": self.screen_state, "brightness": self.brightness,
                 "power": self.power, "released": self.released,
                 "auto": bool(getattr(self, "auto", False)),
                 "led_on": bool(getattr(self, "led_enabled", True))}
@@ -469,10 +522,21 @@ class Engine:
         """Reload last content/brightness/power, else fall back to the default.
         Not a manual send, so it doesn't dismiss album art."""
         self._restoring = True
+        screen = None
+        try:
+            with open(self._state_path) as f:
+                screen = json.load(f).get("screen")
+        except (OSError, ValueError, AttributeError):
+            pass
         try:
             self._restore_inner()
         finally:
             self._restoring = False
+        if isinstance(screen, dict) and screen.get("kind"):
+            if screen.get("kind") == "image" and not os.path.exists(self.image_file(screen)):
+                screen = {"kind": "idle"}
+            self.screen_state = screen
+            self._save_state()
 
     def _restore_inner(self):
         data = None
@@ -543,18 +607,14 @@ class Engine:
     def set_text(self, text, color="#00e5ff", bg="#000000", speed=24,
                  scroll=True, emoji=False, effect="solid", gap_mode="screen",
                  color2="#ff00ff", size="normal", font="pixel", height=0,
-                 smooth=False, align="center"):
+                 smooth=False, align="center", target="both"):
         scene = self._text_scene(text, color, bg, speed, scroll, emoji, effect,
                                  gap_mode, color2, size, font, height, smooth, align)
-        self._manual()
-        with self._lock:
-            self.scene = scene
-            self.state = {"kind": "text", "text": text, "color": color,
-                          "bg": bg, "speed": speed, "scroll": scroll,
-                          "emoji": emoji, "effect": effect, "gap_mode": gap_mode,
-                          "color2": color2, "size": size, "font": font,
-                          "height": height, "smooth": smooth, "align": align}
-        self._save_state()
+        self._put(target, scene, {"kind": "text", "text": text, "color": color,
+                                  "bg": bg, "speed": speed, "scroll": scroll,
+                                  "emoji": emoji, "effect": effect, "gap_mode": gap_mode,
+                                  "color2": color2, "size": size, "font": font,
+                                  "height": height, "smooth": smooth, "align": align})
 
     # ---- preview: render a look without sending it to the sign ----
     PREVIEW_TTL = 300  # seconds an unused preview is kept
@@ -591,18 +651,21 @@ class Engine:
             img = self.latest
         return struct.pack(">HH", img.width, img.height) + img.convert("RGB").tobytes()
 
-    def set_image(self, data: bytes, mode="fit", speed=24, name=""):
-        self._manual()
+    def set_image(self, data: bytes, mode="fit", speed=24, name="", target="both"):
         img = load_image_bytes(data)
+        scene = ImageScene(self.w, self.h, img, mode=mode, speed=speed)
+        state = {"kind": "image", "mode": mode, "speed": speed, "name": name}
+        if target == "screen":
+            state["file"] = "screen"
+        elif target == "sign" and self.screen_state is None:
+            with self._lock:
+                self._unlink_screen()        # before the sign's picture file is replaced
         try:
-            with open(self._image_path, "wb") as f:
+            with open(self.image_file(state), "wb") as f:
                 f.write(data)
         except OSError:
             pass
-        with self._lock:
-            self.scene = ImageScene(self.w, self.h, img, mode=mode, speed=speed)
-            self.state = {"kind": "image", "mode": mode, "speed": speed, "name": name}
-        self._save_state()
+        self._put(target, scene, state)
 
     # ---- effects and GIFs ----
     def _effect_scene(self, params):
@@ -616,13 +679,9 @@ class Engine:
             p[k] = "#%02x%02x%02x" % tuple(p[k])
         return dict(kind="effect", **p)
 
-    def set_effect(self, params: dict):
-        self._manual()
+    def set_effect(self, params: dict, target="both"):
         scene = self._effect_scene(params)
-        with self._lock:
-            self.scene = scene
-            self.state = self._effect_state(scene)
-        self._save_state()
+        self._put(target, scene, self._effect_state(scene))
 
     def _gif_scene(self, name, mode="fit", rate=1.0, beat=False, bpl="auto", nudge=0.0):
         p = self.gifs.path(name)
@@ -635,15 +694,11 @@ class Engine:
             return BeatGifScene(self.w, self.h, img, mode=mode, rate=rate, beats_per_loop=bpl, path=p, nudge=nudge)
         return ImageScene(self.w, self.h, img, mode=mode, rate=rate)
 
-    def set_gif(self, name, mode="fit", rate=1.0, beat=False, bpl="auto", nudge=0.0):
+    def set_gif(self, name, mode="fit", rate=1.0, beat=False, bpl="auto", nudge=0.0, target="both"):
         scene = self._gif_scene(name, mode, rate, beat, bpl, nudge)
-        self._manual()
-        with self._lock:
-            self.scene = scene
-            self.state = {"kind": "gif", "name": name, "mode": scene.mode,
-                          "rate": getattr(scene, "free_rate", scene.rate),
-                          "beat": bool(beat), "bpl": bpl, "nudge": nudge}
-        self._save_state()
+        self._put(target, scene, {"kind": "gif", "name": name, "mode": scene.mode,
+                                  "rate": getattr(scene, "free_rate", scene.rate),
+                                  "beat": bool(beat), "bpl": bpl, "nudge": nudge})
 
     def preview_effect(self, params):
         scene = self._effect_scene(params)
@@ -659,8 +714,11 @@ class Engine:
 
     # ---- resting state: what the sign shows when music stops ----
     def rest_cfg(self) -> dict:
+        """look: the sign's resting look; screen_look: the LCD screen's (older settings: the same)."""
         r = {"after_music": "rest", "look": None}
         r.update(self.cfg.get("rest") or {})
+        if "screen_look" not in r:
+            r["screen_look"] = r.get("look")
         return r
 
     _TEXT_KEYS = ("text", "color", "bg", "speed", "scroll", "emoji", "effect", "gap_mode",
@@ -680,36 +738,40 @@ class Engine:
             return SolidScene(self.w, self.h, "#000000")
         raise ValueError("unknown look %r" % kind)
 
-    def _apply_look_inner(self, look: dict):
+    def _apply_look_inner(self, look: dict, target="both"):
         kind = (look or {}).get("kind")
         if kind == "text":
-            args = {k: look[k] for k in ("text", "color", "bg", "speed", "scroll", "emoji", "effect",
-                                         "gap_mode", "color2", "size", "font", "height", "smooth",
-                                         "align") if k in look}
-            self.set_text(**args)
+            self.set_text(target=target, **{k: look[k] for k in self._TEXT_KEYS if k in look})
         elif kind == "effect":
-            self.set_effect(look)
+            self.set_effect(look, target)
         elif kind == "gif":
             self.set_gif(look.get("name", ""), look.get("mode", "fit"), look.get("rate", 1.0),
-                         bool(look.get("beat")), look.get("bpl", "auto"), look.get("nudge", 0.0))
+                         bool(look.get("beat")), look.get("bpl", "auto"), look.get("nudge", 0.0), target)
         elif kind == "idle":
-            self.clear()
+            self.clear(target)
         else:
             raise ValueError("unknown look %r" % kind)
 
-    def apply_look(self, look: dict):
+    def apply_look(self, look: dict, target="both"):
         """Show a saved look without counting it as a manual send."""
         self._restoring = True
         try:
-            self._apply_look_inner(look)
+            self._apply_look_inner(look, target)
         finally:
             self._restoring = False
 
     def show_rest(self) -> bool:
-        look = self.rest_cfg().get("look")
-        if not look:
+        r = self.rest_cfg()
+        sign, screen = r.get("look"), r.get("screen_look")
+        if not sign and not screen:
             return False
-        self.apply_look(look)
+        if sign and sign == screen:
+            self.apply_look(sign, "both")
+            return True
+        if sign:
+            self.apply_look(sign, "sign")
+        if screen:
+            self.apply_look(screen, "screen")
         return True
 
     def music_ended(self):
@@ -728,11 +790,8 @@ class Engine:
             self.scene = TestPatternScene(self.w, self.h, kind)
             self.state = {"kind": "test", "pattern": kind}
 
-    def clear(self):
-        with self._lock:
-            self.scene = SolidScene(self.w, self.h, "#000000")
-            self.state = {"kind": "idle"}
-        self._save_state()
+    def clear(self, target="both"):
+        self._put(target, SolidScene(self.w, self.h, "#000000"), {"kind": "idle"})
 
     def set_brightness(self, value: int):
         self.brightness = max(0, min(255, int(value)))

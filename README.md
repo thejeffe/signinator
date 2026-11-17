@@ -76,6 +76,17 @@ Open http://host:8080 — works fully in **preview only** mode with no hardware.
 - Watchdog: the service exits (systemd restarts it) if the render loop makes no frame for
   20 s or `/health` doesn't answer 4 checks in a row (10 s apart); why goes in
   `data/watchdog.log`. `SIGNINATOR_NO_WATCHDOG=1` turns it off, `SIGNINATOR_PORT` if not 8080.
+- Two displays: every send (`/api/text`, `/api/effect`, `/api/gif`, `/api/image`, `/api/clear`)
+  takes `target`: `both` (default: the LED sign and the LCD screen show the same, linked),
+  `sign` or `screen` (that display only; the other keeps what it shows). `/api/state`
+  `screen_content` is the LCD's own look (null = same as the sign); saved in state.json
+  `screen`. Resting looks: `rest.look` (sign) and `rest.screen_look` (LCD), set with
+  `POST /api/rest {look, target}`. Song cues: `show_on` sign (default) | screen | both.
+- Album art per display: `routing.sign` / `routing.screen` = `all` (art on: while music plays
+  the cover shows over anything sent to that display, the whole song; in "brief" mode only for
+  the brief time), `art` (the same, dark without music) or `noart` (never). Only a song cue
+  for that display beats it. The page's "🎵 LED sign / 🎵 LCD screen" buttons send `noart` or `"on"`;
+  `"on"` goes back to the mode the display had before it was switched off (`routing_last`).
 - Song cues (show a look instead of everything, album art included, while a chosen song
   plays, then go back): `GET /api/songs` (the last 10 songs played + the cues),
   `POST /api/cues` `{id?, title?, artist?, look | use_current, secs? (0 = whole song)}`
