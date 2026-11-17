@@ -30,6 +30,8 @@ DEFAULTS = {"enabled": True, "mode": "fill", "hold": 60, "token": "",
             # just before the real cover)
             "blocked": []}
 HISTORY_N = 10
+SONGS_N = 10          # recent songs kept for picking song cues
+CUES_MAX = 100
 STATES = ("playing", "paused", "stopped")
 WATCHDOG = 15 * 60   # no event at all for this long while "playing" -> give up
 
@@ -51,6 +53,13 @@ class NowPlaying:
         # cover we have belongs to the old song, so don't show it until the new one comes.
         self._art_stale = False
         self._art_at = 0.0           # when the current cover arrived
+        # song cues: a look shown instead of everything while a chosen song plays
+        self._song_key = ("", "")    # (title, artist) of the current song
+        self._song_since = 0.0       # when it started playing
+        self._logged_key = None      # last song put in the recent-songs log
+        self._cue_on = None          # (cue id, song key) on the sign now
+        self._cue_dismissed = None   # song key whose cue the user sent something over
+        self._cue_try = None         # (cue, until): "Try it" from the page
         import collections
         self.events = collections.deque(maxlen=400)   # what arrived and what was shown (for troubleshooting)
         self.colors = []             # the current cover's main colors
@@ -148,6 +157,13 @@ class NowPlaying:
             if self.info["state"] == "playing" and (changed or was == "stopped"):
                 # a song started or changed: "brief" mode shows the art for a while
                 self._flash_until = now + max(1.0, float(self.cfg().get("brief_s", 10)))
+            key = (self.info["title"], self.info["artist"])
+            if key != self._song_key:
+                self._song_key, self._song_since = key, now
+            elif self.info["state"] == "playing" and was == "stopped":
+                self._song_since = now          # the same song started again
+            if self.info["state"] == "playing" and self.info["title"]:
+                self._log_song(key, now)
             if self.info["state"] == "playing":
                 self._stop_at = None
             elif self._stop_at is None:
@@ -280,6 +296,11 @@ class NowPlaying:
     def dismiss(self):
         """A manual send: stop showing the art until the track changes."""
         with self._lock:
+            if self._cue_on is not None:
+                self._cue_dismissed = self._cue_on[1]
+                self._cue_try = None
+                self._cue_on = None
+                self.e.clear_cue()
             if self.active:
                 self._dismissed = self._key()
                 self.active = False
@@ -288,6 +309,8 @@ class NowPlaying:
     def refresh(self):
         """Settings or sign size changed: rebuild (or drop) the art."""
         with self._lock:
+            if self._cue_on is not None:     # rebuild (or take down) a song cue too
+                self._cue_on = ("rebuild", None)
             self._apply(True)
 
     # ---- decide what the sign shows ----
@@ -305,6 +328,7 @@ class NowPlaying:
 
     def _apply(self, changed: bool):
         now = time.time()
+        self._cue_step(now)
         want = self._want(now)
         if want and (changed or not self.active):
             scene = self._scene()
@@ -365,13 +389,160 @@ class NowPlaying:
                 except Exception as e:  # noqa: BLE001
                     log.warning("now playing tick: %s", e)
 
+    # ---- recent songs ----
+    def _songs_path(self):
+        import os
+        return os.path.join(self.e._data_dir, "songs.json")
+
+    def songs(self) -> list:
+        import json
+        try:
+            with open(self._songs_path()) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return []
+
+    def _log_song(self, key, now):
+        """Put the song at the top of the recent-songs log (once per play)."""
+        import json, os
+        title, artist = key
+        if key == self._logged_key and self.art_sha is None:
+            return
+        lst = self.songs()
+        top = lst[0] if lst else None
+        same_play = key == self._logged_key or (
+            top and top.get("title") == title and not top.get("artist") and now - top.get("time", 0) < 30)
+        if same_play and top:
+            # the same play (the artist or the cover arrived a moment later): fill it in
+            entry = top
+            lst = lst[1:]
+        else:
+            entry = {"title": title, "artist": artist, "time": now}
+            lst = [s for s in lst if (s.get("title"), s.get("artist")) != key]
+        entry.update(title=title, artist=artist, album=self.info.get("album", ""))
+        if self.art_sha and not self._art_stale:
+            entry["art"] = self.art_sha
+        new = [entry] + lst[:SONGS_N - 1]
+        if new == self.songs() and key == self._logged_key:
+            return
+        self._logged_key = key
+        try:
+            p = self._songs_path()
+            with open(p + ".tmp", "w") as f:
+                json.dump(new, f)
+            os.replace(p + ".tmp", p)
+        except OSError as e:
+            log.warning("couldn't keep the recent songs: %s", e)
+
+    # ---- song cues ----
+    def cues(self) -> list:
+        c = self.e.cfg.get("cues")
+        return [x for x in c if isinstance(x, dict)] if isinstance(c, list) else []
+
+    def find_cue(self, title, artist):
+        """The cue for this song: one can name the title, the artist, or both (the cue's
+        words inside the song's). The most specific match wins: both, then title, then artist."""
+        t, a = " %s " % norm(title), " %s " % norm(artist)
+        if not t.strip() and not a.strip():
+            return None
+        best, best_score = None, 0
+        for c in self.cues():
+            if c.get("on") is False:
+                continue
+            ct, ca = norm(c.get("title")), norm(c.get("artist"))
+            if not ct and not ca:
+                continue
+            if ct and " %s " % ct not in t:
+                continue
+            if ca and " %s " % ca not in a:
+                continue
+            score = (2 if ct else 0) + (1 if ca else 0)
+            if score > best_score:
+                best, best_score = c, score
+        return best
+
+    def try_cue(self, cue, seconds=10.0):
+        with self._lock:
+            self._cue_try = (cue, time.time() + seconds)
+            self._cue_on = None
+            self._cue_step(time.time())
+
+    def stop_try(self):
+        with self._lock:
+            if self._cue_try:
+                self._cue_try = None
+                self._cue_step(time.time())
+
+    def _cue_want(self, now):
+        if self._cue_try:
+            if now < self._cue_try[1]:
+                return self._cue_try[0], ("try", self._cue_try[0].get("id"))
+            self._cue_try = None
+        key = self._song_key
+        if self.info["state"] != "playing" or now - self.info["updated"] >= WATCHDOG:
+            return None, None
+        if key == self._cue_dismissed:
+            return None, None
+        cue = self.find_cue(*key)
+        if cue is None:
+            return None, None
+        secs = cue.get("secs") or 0
+        if secs and now - self._song_since > float(secs):
+            return None, None
+        return cue, key
+
+    def _cue_step(self, now):
+        cue, key = self._cue_want(now)
+        want = (cue.get("id"), key) if cue else None
+        if want == self._cue_on:
+            return
+        if cue is not None:
+            try:
+                scene = self.e.look_scene(cue["look"])
+            except Exception as ex:  # noqa: BLE001 - e.g. the GIF was deleted
+                log.warning("can't show the song cue for %r: %s", cue.get("title"), ex)
+                scene = None
+            if scene is not None:
+                self.e.set_cue(scene, cue["look"])
+                self._cue_on = want
+                self.event("cue", title=cue.get("title"), song=self._song_key[0])
+                log.info("song cue: %r -> %s", self._song_key[0] if key and key[0] != "try" else "(try)",
+                         cue["look"].get("name") or cue["look"].get("text") or cue["look"].get("fx") or cue["look"].get("kind"))
+                return
+        if self._cue_on is not None:
+            self.event("cue-off")
+            self._cue_on = None
+            self.e.clear_cue()
+            if self.info["state"] != "playing" and not self.active:
+                # the music stopped while the cue was up: whatever follows the music
+                threading.Thread(target=self.e.music_ended, daemon=True).start()
+
+    def cue_now(self):
+        """The cue on the sign now, or None."""
+        c, _ = self._cue_want(time.time()) if self._cue_on else (None, None)
+        return c
+
+    def cue_title(self):
+        c = self.cue_now() or {}
+        return c.get("title") or ("songs by " + c["artist"] if c.get("artist") else "")
+
     # ---- for the API / page ----
     def status(self) -> dict:
         with self._lock:
             return dict(self.info, active=self.active, has_art=bool(self.art),
+                        cue=self.cue_title() or None, cue_id=(self.cue_now() or {}).get("id"),
                         colors=["#%02x%02x%02x" % c for c in self.colors],
                         art_sha=self.art_sha,
                         hold_until=self._stop_at if (self.active and self._stop_at) else None)
+
+
+def norm(s) -> str:
+    """Song names for matching: no case, accents, apostrophes or punctuation
+    (“It's Me, It's Verity” == "its me its verity")."""
+    import re, unicodedata
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"['`\u2019]", "", s)
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
 
 def picture_id(art: bytes) -> str:

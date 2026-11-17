@@ -74,7 +74,9 @@ class AudioAnalyzer:
         self._band_gain = [1.0 / 20000] * NBANDS
         self._bass_avg = 0.0
         self._last_beat = 0.0
-        self._beats = deque(maxlen=48)   # beat times, for tempo and the beat clock
+        self._beats = deque(maxlen=48)   # kick times (the per-frame "beat" flag for effects)
+        from .beat import BeatTracker
+        self.tracker = BeatTracker()      # tempo + phase for the beat clock
 
     def feed(self, data: bytes):
         a = array.array("h")
@@ -104,6 +106,10 @@ class AudioAnalyzer:
         lvl_l, lvl_r = min(1.0, rl * self._gain), min(1.0, rr * self._gain)
         mono = [(left[i] + right[i]) * 0.5 for i in range(0, HOP)]
         dec = [sum(mono[i:i + DECIM]) / DECIM for i in range(0, HOP, DECIM)]
+        try:
+            self.tracker.feed(dec, t)
+        except Exception:  # noqa: BLE001  (never let the tracker break the effects)
+            pass
         spec = _fft([complex(dec[i] * _WINDOW[i], 0) for i in range(NFFT)])
         mags = [abs(c) for c in spec[: NFFT // 2]]
         bands = []
@@ -153,45 +159,9 @@ class AudioAnalyzer:
     def beat_clock(self, now=None):
         """The music's beat, as heard at the speaker (now - delay):
         returns (position_in_beats, seconds_per_beat), or None when there is no
-        steady beat to follow (no music, or no beat for 4 s)."""
+        steady beat to follow (no music, or no clear beat). See beat.py."""
         want = (now or time.time()) - max(0.0, float(self._get_delay() or 0))
-        with self._lock:
-            beats = [b for b in self._beats if b <= want]
-        if len(beats) < 4 or want - beats[-1] > 4.0:
-            return None
-        # only the current run of beats: an earlier song (or a pause) has its
-        # own phase and would throw the fit off
-        start = len(beats) - 1
-        while start > 0 and beats[start] - beats[start - 1] < 2.0:
-            start -= 1
-        beats = beats[start:]
-        if len(beats) < 4:
-            return None
-        gaps = sorted(b - a for a, b in zip(beats[-9:], beats[-8:]) if b - a > 0.2)
-        if len(gaps) < 3:
-            return None
-        period = gaps[len(gaps) // 2]          # median gap: rough tempo
-        recent = beats[-16:]
-        # refine: give each beat its number on the grid and fit a line through
-        # them (beat times are only accurate to one analysis step, ~46 ms)
-        ks = [round((b - recent[0]) / period) for b in recent]
-        if len(set(ks)) >= 3:
-            mk, mt = sum(ks) / len(ks), sum(recent) / len(recent)
-            var = sum((k - mk) ** 2 for k in ks)
-            if var > 0:
-                period = sum((k - mk) * (b - mt) for k, b in zip(ks, recent)) / var
-                t0 = mt - period * mk                 # fitted time of beat 0
-            else:
-                t0 = recent[0]
-        else:
-            t0 = recent[0]
-        fold = 1.0
-        while period * fold < 0.36:            # fold to 60..165 BPM
-            fold *= 2
-        while period * fold > 1.0:
-            fold /= 2
-        pos = (want - t0) / period / fold      # beats (at the folded tempo)
-        return pos, period * fold
+        return self.tracker.clock(want)
 
     def tempo(self):
         c = self.beat_clock()

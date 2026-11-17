@@ -38,6 +38,8 @@ class Engine:
         self.scene = None
         self._override = None    # e.g. album art while music plays; never saved
         self._override_kind = "art"
+        self._cue = None         # a song cue's scene (replaces everything while its song plays); never saved
+        self._cue_look = None
         self.state = {"kind": "idle"}
         self._stop = threading.Event()
         # persistent runtime state (content + brightness + power) survives restart
@@ -121,6 +123,19 @@ class Engine:
             self._override = scene
             self._override_kind = kind
 
+    # ---- song cue: a look shown instead of everything while a chosen song plays ----
+    def set_cue(self, scene, look):
+        with self._lock:
+            self._cue, self._cue_look = scene, dict(look)
+
+    def clear_cue(self):
+        with self._lock:
+            self._cue, self._cue_look = None, None
+
+    def shown_state(self) -> dict:
+        """The content look on the displays: a song cue's look while one is up, else the user's."""
+        return self._cue_look if self._cue is not None and self._cue_look else self.state
+
     ROUTES = ("all", "art", "noart")
 
     def route(self, target: str) -> str:
@@ -131,6 +146,8 @@ class Engine:
 
     def shows(self, target: str) -> str:
         """What a display shows right now: "art", "content" (the animation/text/GIF) or "dark"."""
+        if self._cue is not None:
+            return "content"                 # a song cue replaces album art and routing
         m = self.route(target)
         art_on = self._override is not None and getattr(self, "_override_kind", "art") == "art"
         if m == "noart":
@@ -145,6 +162,8 @@ class Engine:
         ov = self._override
         if ov is not None and getattr(self, "_override_kind", "art") != "art":
             return ov                        # sync test flash
+        if self._cue is not None:
+            return self._cue
         k = self.shows("sign")
         if k == "art":
             return ov if ov is not None else self.nowplaying.led_scene()
@@ -227,6 +246,49 @@ class Engine:
     # ---- lifecycle ----
     def start(self):
         self._thread.start()
+        if not os.environ.get("SIGNINATOR_NO_WATCHDOG"):
+            threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
+
+    # ---- watchdog: a stuck render loop or web server restarts the service ----
+    WD_LOOP_S = 20       # no frame for this long: stuck
+    WD_HTTP_FAILS = 4    # this many /health checks in a row (10 s apart) unanswered: stuck
+
+    def _wd_note(self, msg):
+        try:
+            with open(os.path.join(self._data_dir, "watchdog.log"), "a") as f:
+                f.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S%z"), msg))
+        except OSError:
+            pass
+
+    def _watchdog(self):
+        """Exits the process (systemd's Restart=on-failure starts it again) when the frame
+        loop stops, or the web page stops answering, and notes why in data/watchdog.log."""
+        import urllib.request
+        port = int(os.environ.get("SIGNINATOR_PORT", "8080"))
+        http_ok_once, fails, last_http = False, 0, 0.0
+        while True:
+            time.sleep(2.0)
+            now = time.monotonic()
+            beat = getattr(self, "_beat", None)
+            if beat is not None and now - beat > self.WD_LOOP_S:
+                log.error("watchdog: no frame for %.0f s: restarting", now - beat)
+                self._wd_note("watchdog: the render loop was stuck for %.0f s: restarting" % (now - beat))
+                os._exit(1)
+            if now - last_http < 10.0:
+                continue
+            last_http = now
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:%d/health" % port, timeout=5) as r:
+                    r.read(64)
+                http_ok_once, fails = True, 0
+            except Exception as e:  # noqa: BLE001
+                if not http_ok_once:
+                    continue             # not up yet (or running on another port: tests)
+                fails += 1
+                if fails >= self.WD_HTTP_FAILS:
+                    log.error("watchdog: the web page stopped answering (%s): restarting", e)
+                    self._wd_note("watchdog: the web page didn't answer for %d checks (%s): restarting" % (fails, e))
+                    os._exit(1)
 
     def stop(self):
         self._stop.set()
@@ -562,7 +624,7 @@ class Engine:
             self.state = self._effect_state(scene)
         self._save_state()
 
-    def _gif_scene(self, name, mode="fit", rate=1.0, beat=False, bpl="auto"):
+    def _gif_scene(self, name, mode="fit", rate=1.0, beat=False, bpl="auto", nudge=0.0):
         p = self.gifs.path(name)
         if not p:
             raise ValueError("no GIF called %r" % name)
@@ -570,17 +632,17 @@ class Engine:
             img = load_image_bytes(f.read())
         if beat:
             from .render import BeatGifScene
-            return BeatGifScene(self.w, self.h, img, mode=mode, rate=rate, beats_per_loop=bpl)
+            return BeatGifScene(self.w, self.h, img, mode=mode, rate=rate, beats_per_loop=bpl, path=p, nudge=nudge)
         return ImageScene(self.w, self.h, img, mode=mode, rate=rate)
 
-    def set_gif(self, name, mode="fit", rate=1.0, beat=False, bpl="auto"):
-        scene = self._gif_scene(name, mode, rate, beat, bpl)
+    def set_gif(self, name, mode="fit", rate=1.0, beat=False, bpl="auto", nudge=0.0):
+        scene = self._gif_scene(name, mode, rate, beat, bpl, nudge)
         self._manual()
         with self._lock:
             self.scene = scene
             self.state = {"kind": "gif", "name": name, "mode": scene.mode,
                           "rate": getattr(scene, "free_rate", scene.rate),
-                          "beat": bool(beat), "bpl": bpl}
+                          "beat": bool(beat), "bpl": bpl, "nudge": nudge}
         self._save_state()
 
     def preview_effect(self, params):
@@ -589,8 +651,8 @@ class Engine:
             self._pv = scene
             self._pv_used = time.monotonic()
 
-    def preview_gif(self, name, mode="fit", rate=1.0, beat=False, bpl="auto"):
-        scene = self._gif_scene(name, mode, rate, beat, bpl)
+    def preview_gif(self, name, mode="fit", rate=1.0, beat=False, bpl="auto", nudge=0.0):
+        scene = self._gif_scene(name, mode, rate, beat, bpl, nudge)
         with self._lock:
             self._pv = scene
             self._pv_used = time.monotonic()
@@ -600,6 +662,23 @@ class Engine:
         r = {"after_music": "rest", "look": None}
         r.update(self.cfg.get("rest") or {})
         return r
+
+    _TEXT_KEYS = ("text", "color", "bg", "speed", "scroll", "emoji", "effect", "gap_mode",
+                  "color2", "size", "font", "height", "smooth", "align")
+
+    def look_scene(self, look: dict):
+        """A scene for a saved look, without showing it (for song cues)."""
+        kind = (look or {}).get("kind")
+        if kind == "text":
+            return self._text_scene(**{k: look[k] for k in self._TEXT_KEYS if k in look})
+        if kind == "effect":
+            return self._effect_scene(look)
+        if kind == "gif":
+            return self._gif_scene(look.get("name", ""), look.get("mode", "fit"), look.get("rate", 1.0),
+                                   bool(look.get("beat")), look.get("bpl", "auto"), look.get("nudge", 0.0))
+        if kind == "idle":
+            return SolidScene(self.w, self.h, "#000000")
+        raise ValueError("unknown look %r" % kind)
 
     def _apply_look_inner(self, look: dict):
         kind = (look or {}).get("kind")
@@ -612,7 +691,7 @@ class Engine:
             self.set_effect(look)
         elif kind == "gif":
             self.set_gif(look.get("name", ""), look.get("mode", "fit"), look.get("rate", 1.0),
-                         bool(look.get("beat")), look.get("bpl", "auto"))
+                         bool(look.get("beat")), look.get("bpl", "auto"), look.get("nudge", 0.0))
         elif kind == "idle":
             self.clear()
         else:
@@ -1023,6 +1102,7 @@ class Engine:
         last_auto = 0.0
         while not self._stop.is_set():
             t0 = time.monotonic()
+            self._beat = t0               # for the watchdog
             if t0 - last_auto >= 1.0:
                 last_auto = t0
                 try:

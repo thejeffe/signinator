@@ -193,7 +193,7 @@ class HABridge:
             if v != NONE and e.gifs.path(v):
                 st = e.state if e.state.get("kind") == "gif" else {}
                 e.set_gif(v, st.get("mode", "fit"), st.get("rate", 1.0), bool(st.get("beat")),
-                          st.get("bpl", "auto"))
+                          st.get("bpl", "auto"), st.get("nudge", 0.0))
                 self._on()
         elif key == "rest":
             e.show_rest()
@@ -218,6 +218,8 @@ class HABridge:
             return "WLED's own effects"
         if not e.power:
             return "Off"
+        if getattr(e, "_cue", None) is not None:
+            return ("Song cue: " + str(e.nowplaying.cue_title() or ""))[:200]
         if e._override is not None and getattr(e.nowplaying, "active", False):
             return "Album art"
         st = e.state

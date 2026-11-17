@@ -82,7 +82,7 @@
    <div class="line"><span class="k">Speed</span><input type="range" id="speed" min="4" max="80" value="24" aria-label="Scroll speed"><span class="val" id="speedval">24</span><span class="k">px/s</span></div>
    </div>
   </section>
-  <div class="sendrow"><button type="button" class="send" id="send-text"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small id="sendSub">shows it on the sign now</small></button><button type="button" class="restbtn" data-rest="text" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button></div>
+  <div class="sendrow"><button type="button" class="send" id="send-text"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small id="sendSub">shows it on the sign now</small></button><button type="button" class="restbtn" data-rest="text" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button><button type="button" class="restbtn songbtn" title="Show this instead of everything while a chosen song plays">♪<small>For a song</small></button></div>
  </div>
 
  <!-- EFFECTS -->
@@ -104,7 +104,7 @@
     <label><span class="k">Color 3</span><input type="color" id="fxC3" value="#2878ff"></label>
    </div>
   </section>
-  <div class="sendrow"><button type="button" class="send" id="send-fx"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small>runs the effect on the sign</small></button><button type="button" class="restbtn" data-rest="fx" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button></div>
+  <div class="sendrow"><button type="button" class="send" id="send-fx"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small>runs the effect on the sign</small></button><button type="button" class="restbtn" data-rest="fx" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button><button type="button" class="restbtn songbtn" title="Show this instead of everything while a chosen song plays">♪<small>For a song</small></button></div>
  </div>
 
  <!-- GIFS -->
@@ -112,7 +112,14 @@
   <section class="box">
    <div class="bh"><b>GIFs</b><span class="k" id="gifCount"></span></div>
    <div class="gifgrid" id="gifList"></div>
-   <div class="line"><label class="btn file" id="gifUpLbl" style="flex:1">+ Add a GIF or picture<input type="file" id="gifUp" accept="image/gif,image/png,image/jpeg,image/webp"></label><button type="button" id="gifDel" title="Delete the selected GIF">Delete</button></div>
+   <div class="line"><label class="btn file" id="gifUpLbl" style="flex:1">+ Add a GIF or picture<input type="file" id="gifUp" accept="image/gif,image/png,image/jpeg,image/webp"></label><button type="button" id="gifUnhide" title="Put this hidden original back in the library" hidden>Unhide</button><button type="button" id="gifDel" title="Delete the selected GIF">Delete</button></div>
+   <div class="line"><span class="k kw">Background</span><input type="range" id="gifBlkS" min="0.5" max="2" step="0.1" value="1" aria-label="How much counts as background" title="Higher: more colours count as background"><span class="val" id="gifBlkSV">1.0</span><button type="button" id="gifBlk" title="Make a copy of the selected GIF: black background and/or trimmed">Make copy</button></div>
+   <label class="chk wide"><input id="gifBlkB" type="checkbox" checked>Black background (off: just trim, keep the background)</label>
+   <div class="line"><span class="k kw">Black lines</span><select id="gifBlkL" aria-label="What happens to black lines" style="flex:1" title="Black line art drawn for a white background vanishes on black"><option value="keep">Keep black</option><option value="edges">Light up lines and edges (line art)</option><option value="all">Light up every dark part</option></select><input type="color" id="gifBlkC" value="#ffffff" aria-label="Colour for the lit-up lines" title="Colour for the lit-up lines"></div>
+   <label class="chk wide"><input id="gifBlkT" type="checkbox" checked>Trim the empty edges so the character fills the screen</label>
+   <div class="line"><span class="k kw">Square</span><div class="pats" id="gifSq" style="flex:1"><button type="button" data-q="none" aria-pressed="true" title="Keep the shape">Keep shape</button><button type="button" data-q="crop" title="Cut to a square around the character">Crop to square</button><button type="button" data-q="pad" title="Add background around it to make a square (nothing cut off)">Expand to square</button></div></div>
+   <label class="chk wide"><input id="gifBlkH" type="checkbox">Also black out background between arms and legs (can eat white parts of the character)</label>
+   <p class="hint">The copy (“…-black”, “…-trim” when the background is kept, or “…-square” when only squared) replaces the GIF in the library; the original is kept as a hidden backup. Making it again from the copy starts from the original, so you can try other settings. Deleting the copy brings the original back. Works best on plain or gradient backgrounds; busy photo backgrounds won't come out clean. <button type="button" class="linkbtn" id="gifShowHidden" hidden></button></p>
    <p class="hint">Upload your own GIFs (for example a Nyan Cat you've saved) or pictures. The built-in ones are original retro animations. <button type="button" class="linkbtn" id="gifRestore">Bring back deleted built-ins</button></p>
   </section>
   <section class="box">
@@ -124,10 +131,13 @@
     <button type="button" data-m="scroll" title="Full height, scrolls across (wide pictures)">Scroll</button>
    </div>
    <div class="line"><span class="k kw">Speed</span><input type="range" id="gifRate" min="0.25" max="4" step="0.25" value="1" aria-label="Playback speed"><span class="val" id="gifRateV">1×</span></div>
-   <div class="line"><span class="k kw">Timing</span><div class="pats" id="gifBeat" style="flex:1;grid-template-columns:1fr 1fr"><button type="button" data-b="0" aria-pressed="true" title="Plays at its own speed (x Speed)">Normal speed</button><button type="button" data-b="1" title="Each loop of the GIF takes a whole number of beats and stays on the beat">♪ Dance to the beat</button></div></div>
-   <div class="line" id="gifBplLine" hidden><span class="k kw">Beats/loop</span><select id="gifBpl" aria-label="Beats per loop of the GIF" style="flex:1"><option value="auto">Auto (closest to the GIF's own speed)</option><option value="1">1 beat</option><option value="2">2 beats</option><option value="4">4 beats</option><option value="8">8 beats</option><option value="16">16 beats</option></select><span class="k" id="gifBpm"></span></div>
+   <div class="line"><span class="k kw">Timing</span><div class="pats" id="gifBeat" style="flex:1;grid-template-columns:1fr 1fr"><button type="button" data-b="0" aria-pressed="true" title="Plays at its own speed (x Speed)">Normal speed</button><button type="button" data-b="1" title="Finds the dance moves in the GIF and lands each one on a beat">♪ Dance to the beat</button></div></div>
+   <div class="line" id="gifBplLine" hidden><span class="k kw">Beats/loop</span><select id="gifBpl" aria-label="Beats per loop of the GIF" style="flex:1"><option value="auto">Match the dance beat</option><option value="loop">Whole loop (closest to the GIF's own speed)</option><option value="1">1 beat</option><option value="2">2 beats</option><option value="4">4 beats</option><option value="8">8 beats</option><option value="16">16 beats</option><option value="32">32 beats</option></select><span class="k" id="gifBpm"></span></div>
+   <div class="line" id="gifNudgeLine" hidden><span class="k kw">Nudge</span><input type="range" id="gifNudge" min="-0.5" max="0.5" step="0.05" value="0" aria-label="Shift the poses against the beat" title="Poses land too early: slide right. Too late: slide left."><span class="val" id="gifNudgeV">0</span></div>
+   <p class="hint" id="gifMoves" hidden></p>
+   <img id="gifPoses" alt="The pose on each dance beat" hidden style="display:block;max-width:100%;image-rendering:pixelated;border-radius:6px;margin-top:4px">
   </section>
-  <div class="sendrow"><button type="button" class="send" id="send-gif"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small>plays the GIF on the sign</small></button><button type="button" class="restbtn" data-rest="gif" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button></div>
+  <div class="sendrow"><button type="button" class="send" id="send-gif"><span class="dotl"></span><span class="lt">SEND TO SIGN</span><small>plays the GIF on the sign</small></button><button type="button" class="restbtn" data-rest="gif" title="Show this when the music stops or nothing is playing">☾<small>Make resting</small></button><button type="button" class="restbtn songbtn" title="Show this instead of everything while a chosen song plays">♪<small>For a song</small></button></div>
  </div>
 
  <div class="msg" id="status" role="status">ready</div>
@@ -172,6 +182,11 @@
    <pre id="npOut"></pre>
    <div class="wide"><span class="k">Recent album art · hide one to never show it (e.g. a placeholder sent before the real cover)</span>
     <div class="arthist" id="artHist"></div></div>
+  </fieldset>
+  <fieldset data-tab="music"><legend>Song cues</legend>
+   <p class="note">While a chosen song plays, the sign (and screen) show your text, effect or GIF instead of anything else, then go back. Make one with ♪ For a song next to Send, or from a recent song below.</p>
+   <div class="wide cuelist" id="cueList"></div>
+   <div class="wide"><span class="k">Recent songs</span><div class="cuelist" id="songList"></div></div>
   </fieldset>
   <fieldset data-tab="music"><legend>What each display shows</legend>
    <label>LED sign<select id="sRouteSign"><option value="all">Everything: album art while music plays, else the animation</option><option value="art">Album art only (dark otherwise)</option><option value="noart">No album art: always the animation</option></select></label>
@@ -268,6 +283,24 @@
    <p class="note" id="sMqNote" style="align-self:end"></p>
   </fieldset>
   <div class="acts"><span class="msg" id="sMsg" role="status"></span><button type="button" id="sCancel">Cancel</button><button type="submit" id="sSave" class="pri">Save</button></div>
+ </form>
+</dialog>
+<dialog id="cueDlg" aria-labelledby="cueTitle">
+ <form method="dialog" id="cueForm" novalidate>
+  <h2 id="cueTitle">Song cue</h2>
+  <fieldset><legend>When this song plays</legend>
+   <label class="wide">Match<select id="cueM"><option value="both">This song by this artist</option><option value="title">This song title, by anyone</option><option value="artist">Any song by this artist</option></select></label>
+   <label class="wide" id="cueTL">Song title<input id="cueT" type="text" autocomplete="off" spellcheck="false" placeholder="It's Me, It's Verity"></label>
+   <label class="wide" id="cueAL">Artist<input id="cueA" type="text" autocomplete="off" spellcheck="false" placeholder="Horror Skunx"></label>
+   <div class="wide"><span class="k">Recent songs · tap one</span><div class="cuepick" id="cuePick"></div></div>
+  </fieldset>
+  <fieldset><legend>Show</legend>
+   <label class="wide">On the sign<select id="cueLook"></select></label>
+   <label>For<select id="cueFor"><option value="0">The whole song</option><option value="s">The first few seconds</option></select></label>
+   <label>Seconds<input id="cueSecs" type="number" min="1" max="3600" value="30" inputmode="numeric"></label>
+   <p class="note">Then the sign goes back to what it was showing (album art or your content). Sending something while the cue is up ends it until the next song.</p>
+  </fieldset>
+  <div class="acts"><span class="msg" id="cueMsg" role="status"></span><button type="button" id="cueCancel">Cancel</button><button type="submit" id="cueSave" class="pri">Save</button></div>
  </form>
 </dialog>
 <script src="/static/app.js?v=BUILD"></script>

@@ -43,7 +43,7 @@ class Library:
             with open(self._meta_path()) as f:
                 return json.load(f)
         except (OSError, ValueError):
-            return {"seeded": [], "removed": []}
+            return {"seeded": [], "removed": [], "hidden": []}
 
     def _save_meta(self, m):
         tmp = self._meta_path() + ".tmp"
@@ -78,8 +78,35 @@ class Library:
                 return p
         return None
 
-    def list(self) -> list:
+    # ---- hidden originals: kept as a backup behind a "-black" copy ----
+    def hidden(self) -> list:
+        return [n for n in self._meta().get("hidden", []) if self.path(n)]
+
+    def set_hidden(self, name: str, hide: bool):
+        with self._lock:
+            m = self._meta()
+            h = [n for n in m.get("hidden", []) if n != name]
+            if hide:
+                h.append(name)
+            m["hidden"] = h
+            self._save_meta(m)
+
+    def put(self, name: str, ext: str, data: bytes):
+        """Write (or replace) a library file under an exact name."""
+        if not NAME_RE.match(name or ""):
+            raise ValueError("bad name")
+        with self._lock:
+            old = self.path(name)
+            tmp = os.path.join(self.dir, ".%s.tmp" % name)
+            with open(tmp, "wb") as f:
+                f.write(data)
+            if old and old != os.path.join(self.dir, name + ext):
+                os.remove(old)
+            os.replace(tmp, os.path.join(self.dir, name + ext))
+
+    def list(self, include_hidden: bool = False) -> list:
         m = self._meta()
+        hidden = set(m.get("hidden", []))
         out = []
         for fn in sorted(os.listdir(self.dir)):
             base, ext = os.path.splitext(fn)
@@ -92,7 +119,10 @@ class Library:
                     size = im.size
             except Exception:  # noqa: BLE001
                 continue
+            if base in hidden and not include_hidden:
+                continue
             out.append({"name": base, "label": base.replace("-", " ").replace("_", " "),
+                        "hidden": base in hidden,
                         "builtin": base in m["seeded"], "frames": frames,
                         "width": size[0], "height": size[1], "type": ext.lstrip(".").lower(),
                         "mtime": int(os.path.getmtime(p))})
@@ -133,6 +163,14 @@ class Library:
             return False
         os.remove(p)
         m = self._meta()
+        # deleting a black/trimmed copy brings its hidden original back
+        orig = re.sub(r"-(black|trim|square)$", "", name)
+        if orig != name and orig in m.get("hidden", []):
+            m["hidden"].remove(orig)
+            self._save_meta(m)
+        if name in m.get("hidden", []):
+            m["hidden"].remove(name)
+            self._save_meta(m)
         if name in m["seeded"] and name not in m["removed"]:
             m["removed"].append(name)
             self._save_meta(m)

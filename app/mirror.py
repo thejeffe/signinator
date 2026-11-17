@@ -291,7 +291,7 @@ class Mirrors:
         k = e.shows("screen")
         if k == "art":
             return bool(e.nowplaying.art)
-        return k == "content" and e.state.get("kind") in ("gif", "image")
+        return k == "content" and e.shown_state().get("kind") in ("gif", "image")
 
     def _photo_step(self, t0) -> bool:
         """Send the next photo. Returns True when nothing needed sending (a still that's up to date)."""
@@ -326,7 +326,7 @@ class Mirrors:
         e = self.e
         if e.shows("screen") == "art":
             return False                       # album art
-        st = e.state
+        st = e.shown_state()
         path = e.gifs.path(st.get("name", "")) if st.get("kind") == "gif" else e._image_path
         if st.get("kind") == "gif" and st.get("beat"):
             return True
@@ -385,7 +385,7 @@ class Mirrors:
         np = e.nowplaying
         k = e.shows("screen")
         ov_key = "art:%s:%s" % (np.art_sha, np.cfg().get("mode")) if k == "art" else k
-        return (size, json.dumps(e.state, sort_keys=True, default=str), ov_key)
+        return (size, json.dumps(e.shown_state(), sort_keys=True, default=str), ov_key)
 
     def _build(self, W, H):
         """The current content again, rendered at W x H for the screens."""
@@ -399,7 +399,7 @@ class Mirrors:
             return ImageScene(W, H, load_image_bytes(np.art), mode=np.cfg().get("mode", "fill"))
         if k == "dark":
             return SolidScene(W, H, "#000000")
-        st = dict(e.state)
+        st = dict(e.shown_state())
         kind = st.get("kind")
         f = W / max(1, e.w)                      # how much bigger than the sign
         if kind == "text":
@@ -421,7 +421,8 @@ class Mirrors:
                 if st.get("beat"):
                     from .render import BeatGifScene
                     return BeatGifScene(W, H, img, mode=st.get("mode", "fit"), rate=st.get("rate", 1.0),
-                                        beats_per_loop=st.get("bpl", "auto"))
+                                        beats_per_loop=st.get("bpl", "auto"), path=p,
+                                        nudge=st.get("nudge", 0.0))
                 return ImageScene(W, H, img, mode=st.get("mode", "fit"), rate=st.get("rate", 1.0))
         if kind == "image":
             try:

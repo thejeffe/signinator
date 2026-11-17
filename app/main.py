@@ -326,8 +326,17 @@ def effect_preview(payload: dict = Body(...)):
 
 # ---- GIF library ----
 @app.get("/api/gifs")
-def gifs_list():
-    return {"gifs": engine.gifs.list()}
+def gifs_list(hidden: int = 0):
+    """The library; hidden=1 also lists the originals hidden behind black copies."""
+    return {"gifs": engine.gifs.list(include_hidden=bool(hidden)), "hidden": len(engine.gifs.hidden())}
+
+
+@app.post("/api/gifs/{name}/hide")
+def gifs_hide(name: str, payload: dict = Body(default={})):
+    if not engine.gifs.path(name):
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    engine.gifs.set_hidden(name, bool(payload.get("hidden", True)))
+    return {"ok": True}
 
 
 @app.post("/api/gifs")
@@ -350,6 +359,83 @@ def gifs_restore():
     return {"ok": True, "restored": engine.gifs.restore_defaults()}
 
 
+@app.post("/api/gifs/{name}/black")
+@app.post("/api/gifs/{name}/copy")
+def gifs_black(name: str, payload: dict = Body(default={})):
+    """Copy "<name>-black" (black background), "<name>-trim" (trimmed, background
+    kept) or "<name>-square" (only made square), each optionally made square. Always made from the original (so
+    trying other settings on a black copy redoes it from the original), replaces
+    an earlier copy, and hides the original (kept as a backup) unless keep_original."""
+    from . import gifwork
+    blacken = bool(payload.get("black", True))
+    trim = bool(payload.get("trim", True))
+    square = payload.get("square") if payload.get("square") in ("crop", "pad") else "none"
+    if not blacken and not trim and square == "none":
+        return JSONResponse({"ok": False, "error": "pick black background, trim or square"}, status_code=400)
+    base = re.sub(r"-(black|trim|square)$", "", name)
+    src = engine.gifs.path(base) or engine.gifs.path(name)
+    if not src:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    if not engine.gifs.path(base):
+        base = name
+    try:
+        strength = max(0.3, min(2.5, float(payload.get("strength", 1.0))))
+    except (TypeError, ValueError):
+        strength = 1.0
+    col = str(payload.get("line_color", "#ffffff"))
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", col)
+    color = tuple(int(m.group(1)[i:i + 2], 16) for i in (0, 2, 4)) if m else (255, 255, 255)
+    try:
+        with open(src, "rb") as f:
+            out = gifwork.black_background(f.read(), strength, bool(payload.get("holes")),
+                                           lines=str(payload.get("lines", "keep")), line_color=color,
+                                           trim=trim, blacken=blacken, square=square)
+        kind = "black" if blacken else ("trim" if trim else "square")
+        final = base[:41] + "-" + kind
+        for other in ("black", "trim", "square"):  # one copy per original: replaces the other kinds
+            op = engine.gifs.path(base[:41] + "-" + other)
+            if other != kind and op:
+                os.remove(op)
+        engine.gifs.put(final, ".gif", out)
+        if not payload.get("keep_original"):
+            engine.gifs.set_hidden(base, True)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return {"ok": True, "name": final, "original": base}
+
+
+@app.get("/api/gifs/{name}/moves")
+def gifs_moves(name: str, bpm: float = 120.0):
+    """Dance moves found in a GIF, and how they'd fall on beats at this tempo."""
+    from . import gifwork
+    from PIL import Image
+    p = engine.gifs.path(name)
+    if not p:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    with Image.open(p) as im:
+        d = gifwork.analyse(p, im)
+    if not d:
+        return {"moves": 0, "beats": 0, "loop_s": 0, "steady": 0}
+    bpm = max(40.0, min(240.0, float(bpm or 120)))
+    nb, _, _ = gifwork.dance_map(d, 60.0 / bpm)
+    return {"moves": len(d["beats"]), "beats": nb, "loop_s": round(d["total"], 2),
+            "dance_bpm": round(60.0 / d["spacing"]), "steady": round(d["steady"], 2)}
+
+
+@app.get("/api/gifs/{name}/poses.png")
+def gifs_poses(name: str):
+    """The frame on each dance beat, side by side: the poses that land on the music's beats."""
+    from . import gifwork
+    from PIL import Image
+    p = engine.gifs.path(name)
+    if not p:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    with Image.open(p) as im:
+        d = gifwork.analyse(p, im)
+        png = gifwork.pose_strip(im, d)
+    return Response(png, media_type="image/png", headers={"Cache-Control": "max-age=60"})
+
+
 @app.get("/api/gifs/{name}")
 def gifs_file(name: str):
     p = engine.gifs.path(name)
@@ -365,12 +451,16 @@ def _gif_args(p: dict):
     except (TypeError, ValueError):
         rate = 1.0
     bpl = p.get("bpl", "auto")
-    if bpl != "auto":
+    if bpl not in ("auto", "loop"):
         try:
-            bpl = max(1, min(16, int(bpl)))
+            bpl = max(1, min(32, int(bpl)))
         except (TypeError, ValueError):
             bpl = "auto"
-    return str(p.get("name", "")), mode, rate, bool(p.get("beat")), bpl
+    try:
+        nudge = round(max(-1.0, min(1.0, float(p.get("nudge", 0.0)))), 3)
+    except (TypeError, ValueError):
+        nudge = 0.0
+    return str(p.get("name", "")), mode, rate, bool(p.get("beat")), bpl, nudge
 
 
 @app.post("/api/gif")
@@ -447,6 +537,80 @@ def rest_show():
     if not engine.show_rest():
         return JSONResponse({"ok": False, "error": "no resting look saved yet"}, status_code=400)
     return {"ok": True, "state": engine.state}
+
+
+# ---- song cues: show a look instead of everything while a chosen song plays ----
+@app.get("/api/songs")
+def songs_get():
+    """The last 10 songs played, and the song cues."""
+    return {"recent": engine.nowplaying.songs(), "cues": engine.nowplaying.cues(),
+            "playing": engine.nowplaying.status().get("cue")}
+
+
+@app.post("/api/cues")
+def cues_post(payload: dict = Body(...)):
+    """Add or change a cue: {id?, title?, artist?, look | use_current, secs? (0 = the whole song), on?}.
+    Title only: that song by anyone. Artist only: any song by them. Both: that song by them."""
+    import uuid
+    from .nowplaying import CUES_MAX, norm
+    title = str(payload.get("title") or "").strip()[:200]
+    artist = str(payload.get("artist") or "").strip()[:200]
+    if not norm(title) and not norm(artist):
+        return JSONResponse({"ok": False, "error": "type a song title, an artist, or both"}, status_code=400)
+    look = dict(engine.state) if payload.get("use_current") else payload.get("look")
+    if not isinstance(look, dict) or look.get("kind") not in _LOOK_KINDS:
+        return JSONResponse({"ok": False, "error": "pick text, an effect or a GIF to show"}, status_code=400)
+    if look.get("kind") == "gif" and not engine.gifs.path(str(look.get("name", ""))):
+        return JSONResponse({"ok": False, "error": "no GIF called %r" % look.get("name")}, status_code=400)
+    try:
+        secs = max(0, min(3600, int(payload.get("secs") or 0)))
+    except (TypeError, ValueError):
+        secs = 0
+    cues = engine.nowplaying.cues()
+    cid = str(payload.get("id") or "")
+    old = next((c for c in cues if c.get("id") == cid), None) if cid else None
+    if old is None:   # the same song again: replace its cue
+        old = next((c for c in cues if norm(c.get("title")) == norm(title)
+                    and norm(c.get("artist")) == norm(artist)), None)
+    cue = {"id": old["id"] if old else uuid.uuid4().hex[:10], "title": title, "artist": artist,
+           "look": look, "secs": secs, "on": payload.get("on") is not False}
+    cues = [cue if c is old else c for c in cues] if old else cues + [cue]
+    if len(cues) > CUES_MAX:
+        return JSONResponse({"ok": False, "error": "too many song cues"}, status_code=400)
+    engine.cfg["cues"] = cues
+    cfgmod.save(engine.cfg)
+    engine.nowplaying.refresh()        # the song playing now may have just got (or lost) a cue
+    return {"ok": True, "cue": cue, "cues": cues}
+
+
+@app.delete("/api/cues/{cid}")
+def cues_delete(cid: str):
+    cues = [c for c in engine.nowplaying.cues() if c.get("id") != cid]
+    engine.cfg["cues"] = cues
+    cfgmod.save(engine.cfg)
+    engine.nowplaying.refresh()
+    return {"ok": True, "cues": cues}
+
+
+@app.post("/api/cues/{cid}/try")
+def cues_try(cid: str, payload: dict = Body(default={})):
+    """Show a cue on the sign for a few seconds (default 10), then put back what was there."""
+    cue = next((c for c in engine.nowplaying.cues() if c.get("id") == cid), None)
+    if cue is None:
+        return JSONResponse({"ok": False, "error": "no such cue"}, status_code=404)
+    try:
+        secs = max(1, min(120, float(payload.get("seconds") or 10)))
+    except (TypeError, ValueError):
+        secs = 10
+    engine.wake()
+    engine.nowplaying.try_cue(cue, secs)
+    return {"ok": True, "seconds": secs}
+
+
+@app.post("/api/cues/stop")
+def cues_stop():
+    engine.nowplaying.stop_try()
+    return {"ok": True}
 
 
 # ---- preview (not sent to the sign) ----

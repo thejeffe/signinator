@@ -157,12 +157,17 @@ function renderStatus() {
   const c = S.content || {};
   const what = describeLook(c);
   const np = S.nowplaying || {};
-  const npOn = !!np.active && (mode === "on" || (mode === "auto" && S.power));
+  const live_ = mode === "on" || (mode === "auto" && S.power);
+  const cueOn = !!np.cue && live_;
+  const npOn = (!!np.active || cueOn) && live_;
   stg.classList.toggle("np-mode", npOn);
-  if (npOn) $("stageTag").textContent = "LIVE · NOW PLAYING";
-  $("srcText").textContent = npOn ? `♪ ${np.title || "untitled"}${np.artist ? " — " + np.artist : ""}` + (np.state !== "playing" ? ` (${np.state})` : "")
+  if (npOn) $("stageTag").textContent = cueOn ? "LIVE · SONG CUE" : "LIVE · NOW PLAYING";
+  $("srcText").textContent = cueOn ? `♪ ${np.state === "playing" && np.title ? np.title : np.cue} · cue` :
+                             npOn ? `♪ ${np.title || "untitled"}${np.artist ? " — " + np.artist : ""}` + (np.state !== "playing" ? ` (${np.state})` : "")
                                   : `${W}×${H} · ${what}`;
   $("npX").hidden = !npOn;
+  $("npX").textContent = cueOn ? "✕ cue" : "✕ art";
+  $("npX").title = cueOn ? "Stop the song cue until the next song" : "Stop showing the album art until the next song";
   const rl = S.relay || {};
   if (rl.state === "playing" && rl.target) $("srcText").textContent += `  → 🔊 ${rl.target}`;
   document.querySelectorAll("#pwSeg button").forEach(b => pressed(b, b.dataset.p === mode));
@@ -173,6 +178,7 @@ function renderStatus() {
   markRest();
   showAlbumColors();
   $("gifBpm").textContent = S.audio && S.audio.bpm ? `${S.audio.bpm} BPM` : (S.music_playing ? "finding the beat…" : "no music");
+  if (VIEW === "gif") showMoves();
   showDirty();
 }
 
@@ -193,7 +199,7 @@ function fillContent(c) {
   if (!c) return;
   if (c.kind === "effect") { fillEffect(c); return; }
   if (c.kind === "gif") { GIF_SEL = c.name; gifMode.set(c.mode || "fit"); $("gifRate").value = c.rate || 1; $("gifRateV").textContent = (+c.rate || 1) + "×";
-    gifBeat.set(c.beat ? "1" : "0"); $("gifBpl").value = String(c.bpl || "auto"); syncGifBeat(); renderGifs(); return; }
+    gifBeat.set(c.beat ? "1" : "0"); $("gifBpl").value = String(c.bpl || "auto"); $("gifNudge").value = +c.nudge || 0; $("gifNudgeV").textContent = nudgeTxt(+c.nudge || 0); syncGifBeat(); renderGifs(); return; }
   if (c.kind !== "text") return;
   $("text").value = c.text || "";
   if (c.color) $("color").value = c.color;
@@ -223,7 +229,7 @@ function normSize(p) { return p.size === "normal" || !p.size ? ["px", 8] : [p.si
 const textSig = (p) => JSON.stringify([p.text, p.color, p.bg, +p.speed, !!p.scroll, !!p.emoji, p.effect, p.effect === "two_color_words" ? p.color2 : "", p.gap_mode || "screen",
   normSize(p), p.font || "pixel", (p.font || "pixel") !== "pixel" && !!p.smooth, p.scroll ? "" : (p.align || "center")]);
 const fxSig = (p) => JSON.stringify([p.fx, +p.speed, +p.intensity, p.palette, (p.c1 || "").toLowerCase(), (p.c2 || "").toLowerCase(), (p.c3 || "").toLowerCase(), !!p.album]);
-const gifSig = (p) => JSON.stringify([p.name, p.mode || "fit", +p.rate || 1, !!p.beat, p.beat ? String(p.bpl || "auto") : ""]);
+const gifSig = (p) => JSON.stringify([p.name, p.mode || "fit", +p.rate || 1, !!p.beat, p.beat ? String(p.bpl || "auto") : "", p.beat ? +p.nudge || 0 : 0]);
 function viewLook() {   // what the current view would send, as a "look"
   if (VIEW === "fx") return Object.assign({ kind: "effect" }, fxParams());
   if (VIEW === "gif") return GIF_SEL ? Object.assign({ kind: "gif" }, gifParams()) : null;
@@ -243,8 +249,8 @@ function isDirty() {
 function showDirty() {
   const d = isDirty(), t = $("pvTag");
   t.classList.toggle("dirty", d);
-  const art = S && S.nowplaying && S.nowplaying.active;
-  t.textContent = (VIEW === "gif" && !GIF_SEL) ? "PICK A GIF" : d ? "NOT SENT YET" : art ? "SENT · ART SHOWING NOW" : "SAME AS SIGN";
+  const art = S && S.nowplaying && S.nowplaying.active, cue = S && S.nowplaying && S.nowplaying.cue;
+  t.textContent = (VIEW === "gif" && !GIF_SEL) ? "PICK A GIF" : d ? "NOT SENT YET" : cue ? "SENT · SONG CUE SHOWING NOW" : art ? "SENT · ART SHOWING NOW" : "SAME AS SIGN";
 }
 let pvTimer = 0;
 function schedulePreview() { clearTimeout(pvTimer); pvTimer = setTimeout(sendPreview, 120); }
@@ -469,8 +475,46 @@ $("send-fx").onclick = async () => {
 let GIFS = [], GIF_SEL = null;
 const gifMode = seg("gifMode", "m");
 const gifBeat = seg("gifBeat", "b", () => syncGifBeat());
-function syncGifBeat() { $("gifBplLine").hidden = gifBeat.get() !== "1"; }
-function gifParams() { return { name: GIF_SEL, mode: gifMode.get(), rate: +$("gifRate").value, beat: gifBeat.get() === "1", bpl: $("gifBpl").value }; }
+function syncGifBeat() { const on = gifBeat.get() === "1"; $("gifBplLine").hidden = !on; $("gifNudgeLine").hidden = !on || $("gifBpl").value === "loop"; showMoves(); }
+const nudgeTxt = (v) => v === 0 ? "0" : (v > 0 ? "+" : "−") + Math.abs(v).toFixed(2) + " beat";
+$("gifNudge").addEventListener("input", () => { $("gifNudgeV").textContent = nudgeTxt(+$("gifNudge").value); schedulePreview(); });
+let MOVES_KEY = "";
+async function showMoves() {
+  const el = $("gifMoves");
+  const pi = $("gifPoses");
+  if (gifBeat.get() !== "1" || !GIF_SEL || $("gifBpl").value === "loop") { el.hidden = true; pi.hidden = true; MOVES_KEY = ""; return; }
+  const bpm = (S && S.audio && S.audio.bpm) || 120, key = GIF_SEL + "|" + Math.round(bpm / 4);
+  if (key === MOVES_KEY) return;
+  MOVES_KEY = key;
+  try {
+    const j = await api(`/api/gifs/${encodeURIComponent(GIF_SEL)}/moves?bpm=${bpm}`);
+    if (MOVES_KEY !== key) return;
+    const g = GIFS.find(x => x.name === GIF_SEL);
+    el.textContent = j.moves ? `The GIF dances at about ${j.dance_bpm} BPM: ${j.moves} beat${j.moves > 1 ? "s" : ""} per ${j.loop_s} s loop (${j.steady >= 0.6 ? "steady beat" : "loose beat, try Nudge"}). `
+                               + `At ${Math.round(bpm)} BPM one loop = ${j.beats} music beats. These poses land on the beats; it stands still when the music stops:`
+                             : "No dance beat found: the whole loop is fitted to the beats instead.";
+    el.hidden = false;
+    if (j.moves) { pi.src = `/api/gifs/${encodeURIComponent(GIF_SEL)}/poses.png?t=${g ? g.mtime : 0}`; pi.hidden = false; } else pi.hidden = true;
+  } catch (e) { el.hidden = true; }
+}
+$("gifBpl").addEventListener("change", () => { syncGifBeat(); schedulePreview(); });
+const gifSq = seg("gifSq", "q");
+function syncBlk() { const on = $("gifBlkB").checked; $("gifBlkL").disabled = $("gifBlkC").disabled = !on; }
+$("gifBlkB").addEventListener("change", syncBlk); syncBlk();
+$("gifBlkS").addEventListener("input", () => $("gifBlkSV").textContent = (+$("gifBlkS").value).toFixed(1));
+$("gifBlk").onclick = async () => {
+  if (!GIF_SEL) { status("Pick a GIF first", true); return; }
+  const b = $("gifBlk"); b.disabled = true; b.textContent = "Working…";
+  try {
+    const j = await postJSON(`/api/gifs/${encodeURIComponent(GIF_SEL)}/black`, { strength: +$("gifBlkS").value, holes: $("gifBlkH").checked,
+      lines: $("gifBlkL").value, line_color: $("gifBlkC").value, trim: $("gifBlkT").checked, black: $("gifBlkB").checked, square: gifSq.get() });
+    if (!j.ok) throw new Error(j.error || "failed");
+    GIF_SEL = j.name; MOVES_KEY = ""; await loadGifs(); schedulePreview(); showMoves();
+    status("Made " + j.name.replace(/[-_]/g, " ") + " (original hidden as a backup). Preview it, then Send");
+  } catch (e) { status("Couldn't make the copy: " + e.message, true); }
+  b.disabled = false; b.textContent = "Make copy";
+};
+function gifParams() { return { name: GIF_SEL, mode: gifMode.get(), rate: +$("gifRate").value, beat: gifBeat.get() === "1", bpl: $("gifBpl").value, nudge: +$("gifNudge").value }; }
 $("gifRate").addEventListener("input", () => $("gifRateV").textContent = $("gifRate").value + "×");
 function renderGifs() {
   const box = $("gifList"); box.innerHTML = "";
@@ -478,21 +522,33 @@ function renderGifs() {
     const b = document.createElement("button"); b.type = "button"; b.title = `${g.label} · ${g.frames} frame${g.frames === 1 ? "" : "s"} · ${g.width}×${g.height}`;
     pressed(b, g.name === GIF_SEL);
     const im = document.createElement("img"); im.loading = "lazy"; im.alt = ""; im.src = `/api/gifs/${encodeURIComponent(g.name)}?t=${g.mtime}`;
-    const sp = document.createElement("span"); sp.textContent = g.label;
+    const sp = document.createElement("span"); sp.textContent = g.hidden ? "⦸ " + g.label : g.label;
+    if (g.hidden) { b.style.opacity = ".55"; b.title += " · hidden original (backup)"; }
     b.append(im, sp);
-    b.addEventListener("click", () => { GIF_SEL = g.name; renderGifs(); schedulePreview(); });
+    b.addEventListener("click", () => { GIF_SEL = g.name; renderGifs(); schedulePreview(); showMoves(); });
     box.appendChild(b);
   });
-  $("gifCount").textContent = `${GIFS.length} in the library`;
+  $("gifCount").textContent = `${GIFS.filter(g => !g.hidden).length} in the library`;
   const sel = GIFS.find(g => g.name === GIF_SEL);
-  $("gifDel").disabled = !sel;
+  $("gifDel").disabled = !sel; $("gifBlk").disabled = !sel;
+  $("gifUnhide").hidden = !(sel && sel.hidden);
+  const sh = $("gifShowHidden");
+  sh.hidden = !GIF_HIDDEN_N && !SHOW_HIDDEN;
+  sh.textContent = SHOW_HIDDEN ? "Hide the originals again" : `Show ${GIF_HIDDEN_N} hidden original${GIF_HIDDEN_N === 1 ? "" : "s"}`;
 }
+let SHOW_HIDDEN = false, GIF_HIDDEN_N = 0;
 async function loadGifs() {
-  try { GIFS = (await api("/api/gifs")).gifs; } catch (e) { GIFS = []; }
+  try { const j = await api("/api/gifs" + (SHOW_HIDDEN ? "?hidden=1" : "")); GIFS = j.gifs; GIF_HIDDEN_N = j.hidden || 0; } catch (e) { GIFS = []; }
   if (GIF_SEL && !GIFS.some(g => g.name === GIF_SEL)) GIF_SEL = null;
   renderGifs();
 }
 loadGifs();
+$("gifShowHidden").onclick = () => { SHOW_HIDDEN = !SHOW_HIDDEN; loadGifs(); };
+$("gifUnhide").onclick = async () => {
+  if (!GIF_SEL) return;
+  try { await postJSON(`/api/gifs/${encodeURIComponent(GIF_SEL)}/hide`, { hidden: false }); status("Unhid " + GIF_SEL.replace(/[-_]/g, " ")); await loadGifs(); }
+  catch (e) { status("Couldn't unhide: " + e.message, true); }
+};
 $("gifUp").onchange = async () => {
   const f = $("gifUp").files[0]; if (!f) return;
   const fd = new FormData(); fd.append("file", f); fd.append("name", f.name);
@@ -519,17 +575,134 @@ $("send-gif").onclick = async () => {
 // ---------- resting state ----------
 function markRest() {
   const look = S && S.rest && S.rest.look, cur = viewLook();
-  document.querySelectorAll(".restbtn").forEach(b => b.classList.toggle("is-rest", !!look && sameLook(look, cur)));
+  document.querySelectorAll(".restbtn:not(.songbtn)").forEach(b => b.classList.toggle("is-rest", !!look && sameLook(look, cur)));
 }
-document.querySelectorAll(".restbtn").forEach(b => b.addEventListener("click", async () => {
+document.querySelectorAll(".restbtn:not(.songbtn)").forEach(b => b.addEventListener("click", async () => {
   const look = viewLook();
   if (!look) { status("Pick something first", true); return; }
   try { await postJSON("/api/rest", { look }); status("Resting look saved: " + describeLook(look) + ". The sign shows it when the music stops."); await loadState(); }
   catch (e) { status("Couldn't save it: " + e.message, true); }
 }));
 
+// ---------- song cues: a look shown instead of everything while a chosen song plays ----------
+let CUE_EDIT = null, SONGS = [], CUES = [];
+const songLabel = (s) => `${s.title || "untitled"}${s.artist ? " — " + s.artist : ""}`;
+const songNorm = (s) => String(s || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .replace(/['`\u2019]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+function cueFor(title, artist) {   // the same matching as the server: the cue's words inside the song's, most specific wins
+  const t = ` ${songNorm(title)} `, a = ` ${songNorm(artist)} `;
+  let best = null, bs = 0;
+  CUES.forEach(c => {
+    const ct = songNorm(c.title), ca = songNorm(c.artist);
+    if (c.on === false || (!ct && !ca) || (ct && !t.includes(` ${ct} `)) || (ca && !a.includes(` ${ca} `))) return;
+    const sc = (ct ? 2 : 0) + (ca ? 1 : 0);
+    if (sc > bs) { best = c; bs = sc; }
+  });
+  return best;
+}
+const cueWhat = (c) => c.title && c.artist ? `“${c.title}” by ${c.artist}` : c.title ? `“${c.title}” (any artist)` : `any song by ${c.artist}`;
+function cueMatchUI() {
+  const m = $("cueM").value;
+  $("cueTL").hidden = m === "artist"; $("cueAL").hidden = m === "title";
+}
+$("cueM").addEventListener("change", cueMatchUI);
+async function fetchSongs() {
+  try { const j = await api("/api/songs"); SONGS = j.recent || []; CUES = j.cues || []; return true; } catch (e) { return false; }
+}
+async function openCue(o) {   // o: {cue?, title?, artist?}
+  CUE_EDIT = o.cue || null;
+  await fetchSongs();
+  $("cueTitle").textContent = CUE_EDIT ? "Change song cue" : "New song cue";
+  $("cueT").value = (CUE_EDIT ? CUE_EDIT.title : o.title) || "";
+  $("cueA").value = (CUE_EDIT ? CUE_EDIT.artist : o.artist) || "";
+  $("cueM").value = o.match || (CUE_EDIT ? (CUE_EDIT.title && CUE_EDIT.artist ? "both" : CUE_EDIT.title ? "title" : "artist") : "title");
+  cueMatchUI();
+  const secs = CUE_EDIT ? +CUE_EDIT.secs || 0 : 0;
+  $("cueFor").value = secs ? "s" : "0"; $("cueSecs").value = secs || 30; $("cueSecs").disabled = !secs;
+  const sel = $("cueLook"), looks = [];
+  sel.innerHTML = "";
+  const add = (parent, label, look) => { const op = document.createElement("option"); op.value = looks.length; op.textContent = label; looks.push(look); parent.appendChild(op); };
+  if (CUE_EDIT) add(sel, "Keep: " + describeLook(CUE_EDIT.look), CUE_EDIT.look);
+  const cur = viewLook();
+  if (cur && !(CUE_EDIT && sameLook(cur, CUE_EDIT.look))) add(sel, "What's in the editor now: " + describeLook(cur), cur);
+  if (GIFS.length) {
+    const g = document.createElement("optgroup"); g.label = "Or a GIF";
+    GIFS.forEach(x => add(g, x.name.replace(/[-_]/g, " "), { kind: "gif", name: x.name, mode: "fit", rate: 1 }));
+    sel.appendChild(g);
+  }
+  sel._looks = looks;
+  const pick = $("cuePick"); pick.innerHTML = "";
+  SONGS.forEach(s => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = songLabel(s); b.title = "Use this song";
+    b.addEventListener("click", () => { $("cueT").value = s.title || ""; $("cueA").value = s.artist || ""; });
+    pick.appendChild(b);
+  });
+  say($("cueMsg"), "");
+  $("cueDlg").showModal();
+}
+$("cueFor").addEventListener("change", () => { $("cueSecs").disabled = $("cueFor").value === "0"; });
+$("cueCancel").addEventListener("click", () => $("cueDlg").close());
+$("cueForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const look = ($("cueLook")._looks || [])[+$("cueLook").value];
+  const m = $("cueM").value, title = m === "artist" ? "" : $("cueT").value.trim(), artist = m === "title" ? "" : $("cueA").value.trim();
+  if (m !== "artist" && !title) { say($("cueMsg"), "Type the song's title (or tap a recent song).", true); return; }
+  if (m !== "title" && !artist) { say($("cueMsg"), "Type the artist (or tap a recent song).", true); return; }
+  if (!look) { say($("cueMsg"), "Pick what to show.", true); return; }
+  try {
+    const j = await postJSON("/api/cues", { id: CUE_EDIT && CUE_EDIT.id, title, artist, look,
+      secs: $("cueFor").value === "0" ? 0 : Math.max(1, +$("cueSecs").value || 30) });
+    $("cueDlg").close();
+    status(`When ${cueWhat(j.cue)} plays, the sign shows ${describeLook(j.cue.look)}.`);
+    CUES = j.cues; renderSongs(); loadState();
+  } catch (e) { say($("cueMsg"), e.message, true); }
+});
+document.querySelectorAll(".songbtn").forEach(b => b.addEventListener("click", () => {
+  if (!viewLook()) { status("Pick something first", true); return; }
+  const np = (S && S.nowplaying) || {};
+  openCue(np.state === "playing" ? { title: np.title, artist: np.artist } : {});
+}));
+function cueRow(img, title, sub, buttons, cls) {
+  const r = document.createElement("div"); r.className = "cuerow " + (cls || "");
+  let pic;
+  if (img) { pic = document.createElement("img"); pic.src = img; pic.alt = ""; pic.onerror = () => { pic.style.visibility = "hidden"; }; }
+  else { pic = document.createElement("span"); pic.textContent = "♪"; pic.style.cssText = "width:32px;text-align:center;font-size:18px"; }
+  const tx = document.createElement("div"); tx.style.minWidth = "0";
+  const t = document.createElement("div"); t.className = "t"; t.textContent = title; t.title = title;
+  const s = document.createElement("div"); s.className = "s"; s.textContent = sub; s.title = sub;
+  tx.append(t, s);
+  const bs = document.createElement("div"); bs.className = "b";
+  buttons.forEach(([label, fn, tip]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; if (tip) b.title = tip; b.addEventListener("click", fn); bs.appendChild(b); });
+  r.append(pic, tx, bs);
+  return r;
+}
+const ago = (t) => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t * 1000).toLocaleDateString(); };
+function renderSongs() {
+  const cl = $("cueList"), sl = $("songList");
+  if (!cl) return;
+  cl.innerHTML = ""; sl.innerHTML = "";
+  const playing = S && S.nowplaying && S.nowplaying.cue_id;
+  if (!CUES.length) cl.textContent = "No song cues yet.";
+  CUES.forEach(c => cl.appendChild(cueRow(null, cueWhat(c),
+    `${describeLook(c.look)} · ${c.secs ? "first " + c.secs + " s" : "whole song"}`, [
+      ["Try", async () => { try { await postJSON(`/api/cues/${c.id}/try`, { seconds: 10 }); status(`Showing the cue for ${cueWhat(c)} for 10 seconds`); loadState(); } catch (e) { status(e.message, true); } }, "Show it on the sign for 10 seconds"],
+      ["Change", () => openCue({ cue: c })],
+      ["Remove", async () => { if (!confirm(`Remove the song cue for ${cueWhat(c)}?`)) return; try { const j = await api(`/api/cues/${c.id}`, { method: "DELETE" }); CUES = j.cues; renderSongs(); loadState(); } catch (e) { status(e.message, true); } }],
+    ], playing && playing === c.id ? "on" : "")));
+  if (!SONGS.length) sl.textContent = "No songs played yet.";
+  SONGS.forEach(s => {
+    const c = cueFor(s.title, s.artist);
+    sl.appendChild(cueRow(s.art ? `/api/nowplaying/history/${s.art}` : null, songLabel(s),
+      `${ago(s.time)}${s.album ? " · " + s.album : ""}${c ? " · cue: " + describeLook(c.look) : ""}`,
+      c ? [["Change cue", () => openCue({ cue: c })]] : [
+        ["+ Song", () => openCue({ title: s.title, artist: s.artist, match: "title" }), "Show something on the sign while this song plays"],
+        ...(s.artist ? [["+ Artist", () => openCue({ title: s.title, artist: s.artist, match: "artist" }), "Show something on the sign for every song by " + s.artist]] : [])]));
+  });
+}
+async function loadSongs() { if (await fetchSongs()) renderSongs(); else $("cueList").textContent = "Couldn't load the song cues."; }
+
 $("npX").addEventListener("click", async () => {
-  try { await postJSON("/api/nowplaying/dismiss", {}); status("Album art hidden until the next song"); await loadState(); }
+  try { const cue = S && S.nowplaying && S.nowplaying.cue; await postJSON("/api/nowplaying/dismiss", {}); status(cue ? "Song cue off until the next song" : "Album art hidden until the next song"); await loadState(); }
   catch (e) { status("Couldn't hide the art: " + e.message, true); }
 });
 
@@ -644,7 +817,7 @@ $("dim").onchange = async () => {
   $("sRelayFind").addEventListener("click", () => loadSpeakers(true));
   async function openDlg() {
     say(sMsg, ""); out.hidden = true;
-    try { const st = await api("/api/state"); fill(st); renderWledLinks(); fillRest(st.rest); syncRefresh(); loadArtHistory(); { const au = st.audio || {};
+    try { const st = await api("/api/state"); fill(st); renderWledLinks(); fillRest(st.rest); syncRefresh(); loadArtHistory(); loadSongs(); { const au = st.audio || {};
       $("sAudioAuto").checked = au.auto !== false; $("sAudioDelay").value = au.delay_ms ?? 1500; $("sAudioOff").value = au.offset_ms ?? 0;
       $("sAudioNote").textContent = `Music effects run ${au.current_ms ?? 0} ms behind the audio Signinator hears` +
         (au.latency_ms != null ? ` (speaker latency ${au.latency_ms} ms + ${au.backlog_ms || 0} ms queued for the relay).` : (au.auto !== false ? ". The AirPlay delay is measured while the relay is playing." : ".")); } $("sRelayVol").value = (st.relay && st.relay.settings && st.relay.settings.volume) ?? 60; $("sRelayCodec").value = (st.relay && st.relay.settings && st.relay.settings.codec) || "alac"; $("sRelayVolMode").value = (st.relay && st.relay.settings && st.relay.settings.volume_mode) || "audio"; $("sRelayName").value = (st.relay && st.relay.settings && st.relay.settings.airplay_name) || ""; loadSpeakers(false); $("sSave").disabled = false; }

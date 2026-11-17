@@ -798,15 +798,37 @@ class ImageScene(Scene):
 
 
 class BeatGifScene(ImageScene):
-    """A GIF that dances to the music: one loop takes a whole number of beats
-    (beats_per_loop, or "auto" = the power of two closest to the GIF's own
-    speed), and the playhead is pulled into line with the beat. With no
-    steady beat it plays at its normal speed (x rate)."""
+    """A GIF that dances to the music. beats_per_loop "auto": the GIF's own
+    dance beat is found (gifwork.find_moves: tempo, where the beats fall, each
+    snapped to the frame where a pose lands) and each dance beat lands on a
+    music beat, the GIF speeding up / slowing down a little between them;
+    "loop": the whole loop takes the power of two of beats closest to its own
+    speed; a number: the dance beats spread over that many music beats.
+    nudge (beats, -1..1) shifts the poses later (+) or earlier (-) against the
+    music. The playhead is pulled into line with the beat. When the music
+    stops it finishes the move under way and stands still on the next pose
+    (and stands in its first pose until music starts)."""
 
-    def __init__(self, w, h, img, mode="fit", rate=1.0, beats_per_loop="auto"):
+    def __init__(self, w, h, img, mode="fit", rate=1.0, beats_per_loop="auto", path=None, nudge=0.0):
         super().__init__(w, h, img, mode=mode, rate=1.0)
         self.free_rate = max(0.1, min(8.0, float(rate or 1.0)))
+        # "auto" = match the dance moves; "loop" = old behaviour (stretch the whole loop)
         self.bpl = beats_per_loop
+        try:
+            self.nudge = max(-1.0, min(1.0, float(nudge or 0.0)))
+        except (TypeError, ValueError):
+            self.nudge = 0.0
+        self.dance, self.mtotal = None, 0.0
+        self._map = None          # (period, beats_per_loop, anchors, offset)
+        if beats_per_loop != "loop" and len(self.frames) >= 3:
+            try:
+                from . import gifwork
+                self.dance = gifwork.analyse(path, img)
+                if self.dance:
+                    self.mtotal = self.dance["total"]
+            except Exception as e:  # noqa: BLE001
+                import logging
+                logging.getLogger("signinator.render").warning("dance-move analysis failed: %s", e)
         self.natural = sum(d for _, d in self.frames) or 1.0   # one loop at normal speed
         self.cum = []
         acc = 0.0
@@ -817,8 +839,22 @@ class BeatGifScene(ImageScene):
         self.prev = None
         self.locked = False
 
+    def _dance(self, period):
+        """(beats_per_loop, anchors, offset) for the dance moves at this tempo, or None."""
+        if not self.dance:
+            return None
+        m = self._map
+        if m is None or abs(m[0] - period) / period > 0.04:
+            from . import gifwork
+            nb, anchors, off = gifwork.dance_map(self.dance, period, self.bpl)
+            # keep half/double time while the tempo only wobbles
+            if m is not None and nb != m[1] and abs(m[0] - period) / period < 0.12:
+                nb, anchors, off = m[1:]
+            m = self._map = (period, nb, anchors, off)
+        return m[1:]
+
     def _beats_per_loop(self, period):
-        if self.bpl != "auto":
+        if self.bpl not in ("auto", "loop"):
             try:
                 return max(1, min(16, int(self.bpl)))
             except (TypeError, ValueError):
@@ -827,20 +863,54 @@ class BeatGifScene(ImageScene):
         best = min((1, 2, 4, 8, 16), key=lambda n: abs(math.log(n / max(0.25, want))))
         return best
 
+    QUIET_S = 0.35            # this long without sound = the music has stopped
+
+    def _pose_beats(self, nb):
+        """Beats (within one loop) where a pose lands: the dance beats, else whole beats."""
+        if self._map is not None and self.dance:
+            return [b for b, _ in self._map[2]]
+        return list(range(int(nb) + 1))
+
     def render(self, now):
         if self.mode == "scroll" and hasattr(self, "_scroll_loop"):
             return super().render(now)
         dt = 0.0 if self.prev is None else max(0.0, min(0.25, now - self.prev))
         self.prev = now
         from . import effects
-        clock = effects.AUDIO.beat_clock() if effects.AUDIO is not None else None
-        if clock is None or len(self.frames) < 2:
+        audio = effects.AUDIO
+        clock = audio.beat_clock() if audio is not None else None
+        # the sign hears the music ~delay s before the speaker plays it: look
+        # QUIET_S ahead, so the dancer stops right when the music does
+        ahead = 0.0
+        if audio is not None:
+            try:
+                ahead = max(0.0, min(self.QUIET_S, float(audio._get_delay() or 0) - 0.1))
+            except Exception:  # noqa: BLE001
+                ahead = 0.0
+        feat = audio.at(time.time() + ahead) if audio is not None else None
+        quiet = not feat or not feat.get("live") or feat.get("raw", 0.0) < 0.003
+        self.quiet_for = (getattr(self, "quiet_for", 0.0) + dt) if quiet else 0.0
+        last = getattr(self, "last", None)       # (beats_per_loop, period) while dancing
+        dance = None
+        if clock is None or self.quiet_for > self.QUIET_S or len(self.frames) < 2:
+            # music stopped (or not started): finish the move under way, land
+            # on the next pose and stand still there
             self.locked = False
-            self.loop += dt * self.free_rate / self.natural
+            if last is not None:
+                nb, period = last
+                if getattr(self, "settle", None) is None:
+                    b = (self.loop % 1.0) * nb
+                    nxt = min([p for p in self._pose_beats(nb) if p > b + 1e-6] or [nb])
+                    self.settle = self.loop - (self.loop % 1.0) + nxt / nb
+                if self.loop < self.settle:
+                    self.loop = min(self.settle, self.loop + dt / (period * nb))
+                dance = self._map[1:] if (self._map is not None and self.dance) else None
         else:
+            self.settle = None
             pos, period = clock
-            n = self._beats_per_loop(period)
-            target = pos / n                    # where the beat says we should be
+            dance = self._dance(period)
+            n = dance[0] if dance else self._beats_per_loop(period)
+            target = (pos - (self.nudge if dance else 0.0)) / n   # where the beat says we should be
             self.loop += dt / (period * n)      # move at the music's tempo...
             err = (target - self.loop) % 1.0
             if err > 0.5:
@@ -850,10 +920,20 @@ class BeatGifScene(ImageScene):
             else:
                 self.loop += err * min(1.0, dt * 3.0)   # ...or ease into the beat
             self.locked = True
-        t = (self.loop % 1.0) * self.natural
+            self.last = (n, period)
+        if dance:
+            from . import gifwork
+            nb, anchors, off = dance
+            # beat-space playhead -> GIF time: each dance beat lands on a music beat
+            t = gifwork.warp(anchors, off, self.mtotal, (self.loop % 1.0) * nb)
+            t *= self.natural / (self.mtotal or self.natural)
+        elif last is None and self.dance:
+            t = self.dance["offset"] * self.natural / (self.mtotal or self.natural)   # first pose
+        else:
+            t = (self.loop % 1.0) * self.natural
         idx = 0
         for i, start in enumerate(self.cum):
-            if start <= t:
+            if start <= t + 1e-6:     # a pose exactly on its beat (rounding)
                 idx = i
             else:
                 break

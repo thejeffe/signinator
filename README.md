@@ -73,6 +73,18 @@ Open http://host:8080 — works fully in **preview only** mode with no hardware.
   (firmware branch `signinator-nowplaying` in ~/airplay-esp32) and a silent
   AirPlay 2 speaker on this server (`sudo bash deploy/install-airplay.sh`,
   read from the shairport-sync metadata pipe by `app/airplay_meta.py`).
+- Watchdog: the service exits (systemd restarts it) if the render loop makes no frame for
+  20 s or `/health` doesn't answer 4 checks in a row (10 s apart); why goes in
+  `data/watchdog.log`. `SIGNINATOR_NO_WATCHDOG=1` turns it off, `SIGNINATOR_PORT` if not 8080.
+- Song cues (show a look instead of everything, album art included, while a chosen song
+  plays, then go back): `GET /api/songs` (the last 10 songs played + the cues),
+  `POST /api/cues` `{id?, title?, artist?, look | use_current, secs? (0 = whole song)}`
+  (title only: that song by anyone; artist only: any song by them; both: most specific wins;
+  same title+artist replaces), `DELETE /api/cues/{id}`, `POST /api/cues/{id}/try`
+  `{seconds}`, `POST /api/cues/stop`. Titles match without case, accents, apostrophes or
+  punctuation, and the cue's words may sit inside a longer title ("… (feat. X)"). A send from
+  the page (or ✕ cue) ends it until the next song. Cues live in config.yaml `cues`, the song
+  log in `data/songs.json`.
 - `GET  /api/state`
 - `GET  /api/frame.png?scale=10` · `GET /api/stream.mjpg` (live preview)
 
