@@ -60,6 +60,9 @@ class Mirrors:
         self._ph_key = self._ph_scene = self._ph_jpeg = None
         self._ph_static, self._ph_last = False, 0.0
         self._ph_size = 480
+        # what the screen was last sent, for the page's LCD view (pixel for pixel)
+        self.last = None          # ("frame", PIL image) or ("photo", jpeg bytes, scale)
+        self.last_at = 0.0
         self.sync_hosts()
         threading.Thread(target=self._loop, daemon=True, name="mirrors").start()
         threading.Thread(target=self._hires_loop, daemon=True, name="mirrors-hires").start()
@@ -70,7 +73,13 @@ class Mirrors:
         size = int(c.get("size") or 120)
         size = size if size in HIRES_SIZES else 120
         fps = max(5, min(60, int(c.get("fps") or 30)))
-        return {"hosts": self.hosts(), "look": look, "size": size, "fps": fps,
+        # the LCD's On / Off / Auto ("enabled" false = Off; older settings: Auto when the sign was)
+        mode = c.get("mode") if c.get("mode") in ("on", "auto") else None
+        if c.get("enabled", True) is False:
+            mode = "off"
+        elif mode is None:
+            mode = "auto" if getattr(self.e, "auto", False) else "on"
+        return {"hosts": self.hosts(), "look": look, "size": size, "fps": fps, "mode": mode,
                 "fps_auto": c.get("fps_auto", True) is not False,
                 "photos": c.get("photos", True) is not False,
                 "enabled": c.get("enabled", True) is not False}      # screens on/off (dark when off)
@@ -155,6 +164,7 @@ class Mirrors:
         self._count_sent()
         with self._lock:
             targets = list(self._targets.values())
+        kept = False
         for t in targets:
             if t["online"] is False:
                 continue                     # don't spray packets at a screen that's away
@@ -162,6 +172,8 @@ class Mirrors:
             if self.cfg()["look"] == "led" and t["w"] and t["h"] and (t["w"], t["h"]) != frame.size:
                 img = frame.resize((t["w"], t["h"]), Image.NEAREST)
             t["sender"].send(img.tobytes())
+            if not kept:
+                self.last, self.last_at, kept = ("frame", img), time.monotonic(), True
 
     # ---- state: geometry, backlight, song ----
     def _loop(self):
@@ -222,6 +234,13 @@ class Mirrors:
                     log.info("mirror %s offline: %s", host, t["error"])
             self._kick.wait(self.POLL_S)
             self._kick.clear()
+
+    def snapshot(self):
+        """What the screen was last sent: ("frame", image) / ("photo", jpeg, scale), or None
+        when nothing went out lately (screen dark, asleep or away)."""
+        if self.last is None or time.monotonic() - self.last_at > 3.0:
+            return None
+        return self.last
 
     def poke(self):
         """Brightness / power / song changed: update the screens now."""
@@ -340,6 +359,8 @@ class Mirrors:
         """Send one photo to each screen: over its photo stream (waits until it's drawn), else HTTP."""
         with self._lock:
             targets = [(h, t) for h, t in self._targets.items() if t["online"]]
+        if targets:
+            self.last, self.last_at = ("photo", jpeg, scale), time.monotonic()
         for h, t in targets:
             if t.get("photo_port"):
                 self._stream_photo(h, t, jpeg, scale)

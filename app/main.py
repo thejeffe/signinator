@@ -95,6 +95,8 @@ def get_state():
     return {
         "content": engine.state,
         "screen_content": engine.screen_state,     # None: the LCD shows the same as the sign
+        "screen_mode": engine.screen_mode(),       # the LCD's own on / off / auto
+        "screen_awake": engine.screen_awake(),
         "brightness": engine.brightness,
         "power": engine.power,
         "mode": engine.mode,
@@ -552,6 +554,37 @@ def rest_show():
     return {"ok": True, "state": engine.state}
 
 
+# ---- the LCD screen: its own On / Off / Auto, and what it's showing ----
+@app.post("/api/screen")
+def screen_post(payload: dict = Body(...)):
+    """{mode: on|off|auto} and/or {wake: true} (Auto with no music: light it now)."""
+    if payload.get("mode") is not None:
+        try:
+            engine.set_screen_mode(str(payload["mode"]))
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    if payload.get("wake"):
+        engine.wake("screen")
+    return {"ok": True, "mode": engine.screen_mode(), "awake": engine.screen_awake()}
+
+
+@app.get("/api/screen.bin")
+def screen_bin():
+    """What the LCD was last sent, pixel for pixel. X-Screen: "frame" (uint16 w, uint16 h
+    big-endian, then RGB bytes, drawn as LED dots), "photo" (the JPEG; X-Scale 2 = the
+    screen doubles it) or "none" (nothing sent lately: dark, asleep or away)."""
+    import struct
+    snap = engine.mirrors.snapshot()
+    h = {"Cache-Control": "no-store"}
+    if snap is None:
+        return Response(b"", media_type="application/octet-stream", headers=dict(h, **{"X-Screen": "none"}))
+    if snap[0] == "photo":
+        return Response(snap[1], media_type="image/jpeg", headers=dict(h, **{"X-Screen": "photo", "X-Scale": str(snap[2])}))
+    img = snap[1].convert("RGB")
+    return Response(struct.pack(">HH", img.width, img.height) + img.tobytes(),
+                    media_type="application/octet-stream", headers=dict(h, **{"X-Screen": "frame"}))
+
+
 # ---- song cues: show a look instead of everything while a chosen song plays ----
 @app.get("/api/songs")
 def songs_get():
@@ -618,7 +651,9 @@ def cues_try(cid: str, payload: dict = Body(default={})):
         secs = max(1, min(120, float(payload.get("seconds") or 10)))
     except (TypeError, ValueError):
         secs = 10
-    engine.wake()
+    from .nowplaying import cue_displays
+    on = cue_displays(cue)
+    engine.wake("both" if len(on) == 2 else on[0])
     engine.nowplaying.try_cue(cue, secs)
     return {"ok": True, "seconds": secs}
 

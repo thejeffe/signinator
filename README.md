@@ -76,6 +76,12 @@ Open http://host:8080 — works fully in **preview only** mode with no hardware.
 - Watchdog: the service exits (systemd restarts it) if the render loop makes no frame for
   20 s or `/health` doesn't answer 4 checks in a row (10 s apart); why goes in
   `data/watchdog.log`. `SIGNINATOR_NO_WATCHDOG=1` turns it off, `SIGNINATOR_PORT` if not 8080.
+- LCD screen power: its own On / Off / Auto (`POST /api/screen {mode}`; `{wake: true}` lights it
+  in Auto with no music, until the music next starts or stops). The LED sign's On / Off / WLED /
+  Auto (`/api/power`) is the LED's alone. `/api/state`: `screen_mode`, `screen_awake`. Stored as
+  `mirror.mode` (+ `mirror.enabled` = not off); older settings: Auto if the sign was in Auto.
+- `GET /api/screen.bin`: what the LCD was last sent, pixel for pixel (`X-Screen: frame` = uint16
+  w, h + RGB, `photo` = the JPEG with `X-Scale`, `none`). The page shows it beside the LED view.
 - Two displays: every send (`/api/text`, `/api/effect`, `/api/gif`, `/api/image`, `/api/clear`)
   takes `target`: `both` (default: the LED sign and the LCD screen show the same, linked),
   `sign` or `screen` (that display only; the other keeps what it shows). `/api/state`

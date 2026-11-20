@@ -57,7 +57,7 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 .cvwrap{flex:1 1 auto;min-height:0;width:100%;display:grid;place-items:center}
 .app.strip .cvwrap,.stacked .cvwrap{flex:none}
 .stage canvas{display:block}
-.stagebar{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;max-width:720px;color:#8796a8}
+.stagebar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;max-width:720px;color:#8796a8}
 .stagebar .k{color:#7d8a99}
 .stagebar .val{color:#c9d3de}
 .stagebar .src{grid-column:1/-1;display:flex;gap:8px;align-items:center;min-width:0}
@@ -224,3 +224,18 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 .tgtrow .seg2 button{font-size:13px;padding:6px 2px}
 .tgtrow.solo .seg2 button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .artrow .seg2 button[aria-pressed="true"]{background:#7b4dd8;border-color:#7b4dd8;color:#fff}
+
+/* two live displays side by side: the LED sign and the LCD screen, each pixel for pixel */
+.duo{flex:1 1 auto;min-height:0;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.disp{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0}
+.dh{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between;color:#c9d3de}
+.dh b{font:600 15px var(--display);letter-spacing:.04em;text-transform:uppercase}
+.dh .pw button{padding:4px 9px;font-size:13px}
+#lcdSeg{grid-template-columns:repeat(3,auto)}
+.pw button[data-s="on"][aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
+.pw button[data-s="off"][aria-pressed="true"]{background:#e0233a;border-color:#e0233a;color:#fff}
+.pw button[data-s="auto"][aria-pressed="true"]{background:#7b4dd8;border-color:#7b4dd8;color:#fff}
+#lcdwrap{background:#020305;border-radius:8px}
+#lcdImg{display:block;max-width:100%;max-height:100%;object-fit:contain}
+#lcdImg.px,#lcdView{image-rendering:pixelated}
+.res{font:500 10px var(--mono);letter-spacing:.06em;color:#7d8a99;text-align:center}

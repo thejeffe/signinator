@@ -25,9 +25,19 @@
  </div>
 
  <div class="stage" id="stage">
-  <div class="cvwrap" id="cvwrap"><canvas id="view" aria-label="What the sign is showing now"></canvas><div class="stmsg" id="stMsg" hidden></div></div>
+  <div class="duo">
+   <div class="disp" id="dLed">
+    <div class="dh"><b>LED sign</b><div class="pw" id="pwSeg" role="group" aria-label="Signinator on or off"><button type="button" data-p="on" title="Signinator shows your message on the sign">On</button><button type="button" data-p="off" title="Sign goes dark (Signinator holds it black)">Off</button><button type="button" data-p="wled" title="Signinator stops sending and WLED runs its own effects and presets">WLED</button><button type="button" data-p="auto" title="Off and idle until music plays; on while it plays; off again when it stops">Auto</button></div></div>
+    <div class="cvwrap" id="cvwrap"><canvas id="view" aria-label="What the LED sign is showing now"></canvas><div class="stmsg" id="stMsg" hidden></div></div>
+    <span class="res" id="ledRes"></span>
+   </div>
+   <div class="disp" id="dLcd">
+    <div class="dh"><b>LCD screen</b><div class="pw" id="lcdSeg" role="group" aria-label="LCD screen on, off or auto"><button type="button" data-s="on" title="The LCD screen stays on">On</button><button type="button" data-s="off" title="The LCD screen is dark">Off</button><button type="button" data-s="auto" title="On while music plays, dark when it stops">Auto</button></div></div>
+    <div class="cvwrap" id="lcdwrap"><canvas id="lcdView" aria-label="What the LCD screen is showing now, pixel for pixel"></canvas><img id="lcdImg" alt="What the LCD screen is showing now" hidden><div class="stmsg" id="lcdMsg" hidden></div></div>
+    <span class="res" id="lcdRes"></span>
+   </div>
+  </div>
   <div class="stagebar">
-   <div class="pw" id="pwSeg" role="group" aria-label="Signinator on or off"><button type="button" data-p="on" title="Signinator shows your message on the sign">On</button><button type="button" data-p="off" title="Sign goes dark (Signinator holds it black)">Off</button><button type="button" data-p="wled" title="Signinator stops sending and WLED runs its own effects and presets">WLED</button><button type="button" data-p="auto" title="Off and idle until music plays; on while it plays; off again when it stops">Auto</button></div>
    <span class="k bk">Bright</span>
    <input type="range" id="dim" min="0" max="1000" value="500" aria-label="Brightness">
    <span class="val" id="dimval">128</span>

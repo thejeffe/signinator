@@ -26,6 +26,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 let S = null;              // last /api/state
 let W = 96, H = 8;         // sign size
+const signSize = () => [W, H];
 let BRI = 128;             // real brightness 0..255
 let VIEW = "text";
 // which display Send (and Make resting) changes: both | sign (LED) | screen (LCD)
@@ -46,15 +47,18 @@ document.querySelectorAll("#viewSeg button[data-v]").forEach(b => b.addEventList
 
 // ---------- LED monitors: the live stage and the preview ----------
 class Monitor {
-  constructor(canvas) { this.cv = canvas; this.ctx = canvas.getContext("2d"); this.off = document.createElement("canvas"); this.octx = this.off.getContext("2d"); this.cell = 4; this.frame = null; this.k = 1; }
+  // dims: [w, h] of its own (the LCD's resolution), else the sign's W x H
+  constructor(canvas) { this.cv = canvas; this.ctx = canvas.getContext("2d"); this.off = document.createElement("canvas"); this.octx = this.off.getContext("2d"); this.cell = 4; this.frame = null; this.k = 1; this.dims = null; }
   size(cell) {
+    const [W, H] = this.dims || signSize();
     this.cell = cell; const dpr = window.devicePixelRatio || 1;
-    this.cv.width = W * cell * dpr; this.cv.height = H * cell * dpr;
+    this.cv.width = Math.round(W * cell * dpr); this.cv.height = Math.round(H * cell * dpr);
     this.cv.style.width = W * cell + "px"; this.cv.style.height = H * cell + "px";
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.off.width = W; this.off.height = H; this.draw();
   }
   draw() {
+    const [W, H] = this.dims || signSize();
     const { ctx, cell } = this;
     ctx.fillStyle = "#020305"; ctx.fillRect(0, 0, W * cell, H * cell);
     const f = this.frame;
@@ -64,6 +68,9 @@ class Monitor {
       img.data[i * 4] = px[j] * k; img.data[i * 4 + 1] = px[j + 1] * k; img.data[i * 4 + 2] = px[j + 2] * k; img.data[i * 4 + 3] = 255;
     }
     this.octx.putImageData(img, 0, 0);
+    if (cell < 3) {   // fine resolution: square pixels, still one per screen pixel
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(this.off, 0, 0, W * cell, H * cell); return;
+    }
     if ("filter" in ctx && cell >= 4) {   // glow: a blurred, scaled copy behind the dots
       ctx.save(); ctx.filter = `blur(${cell * 0.55}px)`; ctx.globalAlpha = 0.85; ctx.imageSmoothingEnabled = true;
       ctx.drawImage(this.off, 0, 0, W * cell, H * cell); ctx.restore();
@@ -76,7 +83,8 @@ class Monitor {
     }
   }
 }
-const live = new Monitor($("view")), prev = new Monitor($("pv"));
+const live = new Monitor($("view")), prev = new Monitor($("pv")), lcd = new Monitor($("lcdView"));
+lcd.dims = [1, 1];
 // dim LEDs look much brighter to the eye than linear; same curve as Treeinator's preview
 const eyeK = () => Math.pow(BRI / 255, 0.4);
 function setLiveK() { const m = S ? S.mode : "on", on = m === "on" || (m === "auto" && S && S.power); live.k = on ? eyeK() : m === "wled" ? 0.25 * eyeK() : 0; prev.k = Math.max(0.35, eyeK()); }
@@ -93,11 +101,59 @@ function sizeCanvas() {
   const cell = Math.max(2, Math.min(40, Math.floor(Math.min(aw / W, ah / H))));
   if (stacked) wrap.style.height = H * cell + "px";
   live.size(cell);
+  $("lcdwrap").style.height = stacked ? H * cell + "px" : "";
+  sizeLcd();
   // preview: smaller, capped in height
   const pw = $("pvwrap").clientWidth - 16, ph = phone.matches ? 130 : Math.max(90, Math.min(170, window.innerHeight * 0.17));
   prev.size(Math.max(1, Math.min(24, Math.floor(Math.min(pw / W, ph / H)))));
   setLiveK();
 }
+// the LCD view: what the screen was sent, one dot (or pixel) per screen pixel, scaled to fit the box
+function lcdBox() { const b = $("lcdwrap"); return Math.max(40, Math.min(b.clientWidth, b.clientHeight || b.clientWidth)); }
+function sizeLcd() { const [w, h] = lcd.dims; lcd.size(lcdBox() / Math.max(w, h)); }
+let lcdUrl = null;
+async function pollLcd() {
+  const r = await fetch("/api/screen.bin", { cache: "no-store" });
+  const kind = r.headers.get("X-Screen") || "none", b = await r.arrayBuffer();
+  LCD_KIND = kind;
+  if (kind === "photo") {
+    if (lcdUrl) URL.revokeObjectURL(lcdUrl);
+    lcdUrl = URL.createObjectURL(new Blob([b], { type: "image/jpeg" }));
+    const im = $("lcdImg"), sc = +(r.headers.get("X-Scale") || 1);
+    im.onload = () => { $("lcdRes").textContent = `LCD · photo ${im.naturalWidth}×${im.naturalHeight}` + (sc === 2 ? " (shown doubled)" : ""); };
+    im.src = lcdUrl; im.classList.toggle("px", sc === 2);
+    const box = lcdBox(); im.style.width = im.style.height = box + "px";
+    im.hidden = false; $("lcdView").hidden = true;
+  } else if (kind === "frame") {
+    const u = new Uint8Array(b), w = (u[0] << 8) | u[1], h = (u[2] << 8) | u[3];
+    if (!w || !h || u.length < 4 + w * h * 3) return;
+    if (lcd.dims[0] !== w || lcd.dims[1] !== h) { lcd.dims = [w, h]; sizeLcd(); }
+    lcd.frame = { w, h, px: u.subarray(4) }; lcd.k = 1; lcd.draw();
+    $("lcdView").hidden = false; $("lcdImg").hidden = true;
+    $("lcdRes").textContent = `LCD · ${w}×${h} ${S && S.mirror && S.mirror.look === "hires" ? "full resolution" : "LED dots"}`;
+  } else {
+    lcd.frame = null; lcd.draw(); $("lcdView").hidden = false; $("lcdImg").hidden = true;
+  }
+  showLcdMsg();
+}
+let LCD_KIND = "none";
+function showLcdMsg() {
+  if (!S) return;
+  const m = S.screen_mode || "on", st = ((S.mirror || {}).status || [])[0];
+  const msg = !st ? "No LCD screen set up (⚙ → Layout)" : st.online === false ? "LCD screen isn't answering"
+    : m === "off" ? "LCD screen is off" : !S.screen_awake ? "Waiting for music (Auto)"
+    : (S.routing && S.routing.showing && S.routing.showing.screen === "dark") ? "Dark: album art only, no music"
+    : LCD_KIND === "none" ? "Nothing sent yet" : "";
+  $("lcdMsg").hidden = !msg; $("lcdMsg").textContent = msg;
+  if (msg && LCD_KIND === "none") $("lcdRes").textContent = "LCD";
+}
+document.querySelectorAll("#lcdSeg button").forEach(b => b.addEventListener("click", async () => {
+  try {
+    await postJSON("/api/screen", { mode: b.dataset.s });
+    status({ on: "LCD screen on", off: "LCD screen off", auto: "LCD screen: on while music plays, off when it stops" }[b.dataset.s]);
+    await loadState();
+  } catch (e) { status("Couldn't switch the LCD: " + e.message, true); }
+}));
 let rsz = 0;
 window.addEventListener("resize", () => { cancelAnimationFrame(rsz); rsz = requestAnimationFrame(sizeCanvas); });
 
@@ -118,6 +174,7 @@ async function pollFrames() {
     try {
       const f = await fetchFrame("/api/frame.bin"); if (f) { live.frame = f; live.draw(); }
       if (n++ % 2 === 0) { const p = await fetchFrame("/api/preview.bin"); if (p) { prev.frame = p; prev.draw(); } }
+      else await pollLcd();
     } catch (e) { await sleep(1500); }
     await sleep(Math.max(0, 66 - (performance.now() - t0)));
   }
@@ -156,6 +213,9 @@ function renderStatus() {
   stg.classList.toggle("auto-mode", mode === "auto");
   stg.classList.toggle("live", (mode === "on" || (mode === "auto" && S.power)) && cls === "live");
   $("stageTag").textContent = mode === "off" ? "LIVE · OFF" : mode === "wled" ? "LIVE · WLED" : mode === "auto" ? (S.power ? "LIVE · AUTO" : "AUTO · IDLE") : cls === "live" ? "LIVE · ON AIR" : "LIVE";
+  document.querySelectorAll("#lcdSeg button").forEach(b => pressed(b, b.dataset.s === (S.screen_mode || "on")));
+  $("ledRes").textContent = `LED · ${W}×${H}`;
+  showLcdMsg();
   const dark = mode === "off" || mode === "wled" || (mode === "auto" && !S.power);
   $("stMsg").hidden = !dark;
   $("stMsg").textContent = mode === "off" ? "Sign is off" : mode === "auto" ? "Waiting for music (Auto)" : "WLED is running its own effects";
@@ -283,7 +343,12 @@ document.querySelectorAll(".view").forEach(v => ["input", "change", "click"].for
 })));
 // Sending also turns Signinator on, so a message never goes to a dark sign.
 async function ensureOn() {
-  if (!S || TGT === "screen") return;   // the LCD alone: leave the LED sign as it is
+  if (!S) return;
+  if (TGT !== "sign") {   // the LCD: Off -> On; Auto with no music -> lit until the music next starts/stops
+    if (S.screen_mode === "off") await postJSON("/api/screen", { mode: "on" });
+    else if (S.screen_mode === "auto" && !S.screen_awake) await postJSON("/api/screen", { wake: true });
+  }
+  if (TGT === "screen") return;         // the LCD alone: leave the LED sign as it is
   if (S.mode === "auto") { if (!S.power) await postJSON("/api/power", { mode: "auto", wake: true }); return; }   // stay in auto
   if (S.mode !== "on") await postJSON("/api/power", { mode: "on" });
 }

@@ -170,7 +170,7 @@ class HABridge:
         elif key == "auto":
             e.set_auto(v.upper() == "ON")
         elif key == "screen":
-            e.update_config({"mirror": {"enabled": v.upper() == "ON"}})
+            e.set_screen_mode("on" if v.upper() == "ON" else "off")
         elif key == "mode":
             m = dict((lab, k) for k, lab in MODES).get(v)
             if m:

@@ -850,12 +850,36 @@ class Engine:
         self._apply_power()
         self._save_state()
 
+    def screen_mode(self) -> str:
+        """The LCD screen's own On / Off / Auto (Auto: on while music plays)."""
+        mirrors = getattr(self, "mirrors", None)
+        return mirrors.cfg()["mode"] if mirrors is not None else "on"
+
     def screen_awake(self) -> bool:
-        """Auto mode with no music: the LCD screen sleeps too (its own switch still decides the rest)."""
+        """The LCD screen is lit: On, or Auto while music plays (or after a send to it)."""
+        m = self.screen_mode()
+        if m == "off":
+            return False
+        return m == "on" or self.music_active() or bool(getattr(self, "_screen_woken", False))
+
+    def music_active(self) -> bool:
+        """Music now, or within AUTO_GRACE seconds (what Auto follows)."""
+        return time.time() - getattr(self, "_auto_last_music", 0.0) < self.AUTO_GRACE
+
+    def set_screen_mode(self, mode: str):
+        if mode not in ("on", "off", "auto"):
+            raise ValueError("mode must be on, off or auto")
+        self._screen_woken = False
+        self.update_config({"mirror": {"mode": mode, "enabled": mode != "off"}})
+        mirrors = getattr(self, "mirrors", None)
+        if mirrors is not None:
+            mirrors.poke()
+
+    def _led_awake(self) -> bool:
         return not getattr(self, "auto", False) or bool(getattr(self, "_auto_active", False))
 
     def _apply_power(self):
-        want = bool(getattr(self, "led_enabled", True)) and self.screen_awake()
+        want = bool(getattr(self, "led_enabled", True)) and self._led_awake()
         if want != self.power:
             self._set_power(want)
 
@@ -881,12 +905,18 @@ class Engine:
         """Auto mode: displays on when music starts, off when it has stopped for AUTO_GRACE
         seconds, each only if its own switch is on. Only acts on changes, so a manual wake-up
         stays on until the music next stops."""
-        if not getattr(self, "auto", False):
-            return
         now = time.time()
         if self.music_playing():
             self._auto_last_music = now
         active = now - getattr(self, "_auto_last_music", 0.0) < self.AUTO_GRACE
+        if active != getattr(self, "_music_was", None):
+            self._music_was = active
+            self._screen_woken = False       # a wake-up lasts until the music next starts or stops
+            mirrors = getattr(self, "mirrors", None)
+            if mirrors is not None:
+                mirrors.poke()               # the LCD's Auto follows the music too
+        if not getattr(self, "auto", False):
+            return
         if force or active != getattr(self, "_auto_active", None):
             self._auto_active = active
             want = bool(getattr(self, "led_enabled", True)) and active
@@ -897,10 +927,16 @@ class Engine:
             if mirrors is not None:
                 mirrors.poke()
 
-    def wake(self):
-        """A manual send in auto mode with no music: show it now (if the LED is switched on)."""
-        if getattr(self, "auto", False) and not self.power and getattr(self, "led_enabled", True):
+    def wake(self, target="both"):
+        """A manual send in Auto with no music: show it now on that display (if it isn't Off)."""
+        if target != "screen" and getattr(self, "auto", False) and not self.power \
+                and getattr(self, "led_enabled", True):
             self._set_power(True)
+        if target != "sign" and self.screen_mode() == "auto" and not self.screen_awake():
+            self._screen_woken = True
+            mirrors = getattr(self, "mirrors", None)
+            if mirrors is not None:
+                mirrors.poke()
 
     def set_power(self, on: bool):
         self.set_led(on)
