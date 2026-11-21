@@ -47,9 +47,7 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 .seg2{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px}
 .seg2 button{font:600 15px var(--display);letter-spacing:.03em}
 .seg2 button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
-#viewSeg{grid-template-columns:1fr 1fr 1fr auto auto;grid-auto-flow:row;min-width:260px}
-#reloadBtn,#setBtn{padding:6px 10px;font:600 15px var(--display)}
-#reloadBtn.upd{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+#viewSeg{grid-template-columns:1fr 1fr 1fr auto;grid-auto-flow:row;min-width:260px}
 
 /* stage: the sign itself */
 .stage{grid-area:stage;background:var(--stage);border-radius:12px;padding:10px 12px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;min-height:0}
@@ -255,3 +253,16 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 /* phones: the page scrolls, so the banner stays locked at the top and nothing slides under the status bar */
 .banner{position:sticky;top:0;z-index:50}
 @media (max-width:759px){html,body{height:auto}body{min-height:100dvh}}
+
+/* ☰ menu: Reload and Settings (the other buttons stay as controls) */
+.amenu{position:relative;display:grid}
+.amenu .menubtn{padding:0 10px;display:grid;place-items:center;position:relative;height:100%}
+.amenu svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.amenu .menubtn[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.amenu .menubtn.upd::after{content:"";position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--panel)}
+.amenu .menupop{position:absolute;right:0;top:calc(100% + 6px);z-index:80;min-width:200px;display:grid;padding:6px;gap:2px;background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.amenu .menupop[hidden]{display:none}
+.amenu .menupop button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;padding:10px 12px;border-radius:8px;font:500 15px var(--body);letter-spacing:normal;color:var(--ink);white-space:nowrap;overflow:visible}
+.amenu .menupop button:hover:not(:disabled),.amenu .menupop button:focus-visible{background:var(--row)}
+.amenu .menupop button svg{color:var(--accent);flex:none}
+.amenu .menupop #reloadBtn.upd span::after{content:" · update ready";color:var(--accent);font-weight:600}
