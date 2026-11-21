@@ -5,20 +5,20 @@
 :root[data-theme="dark"]{--bg:#0D141B;--panel:#131D27;--ink:#DCE5EE;--muted:#90A2B4;--rule:#2A3949;--accent:#F2B33D;--on-accent:#1B1305;--stage:#05080C;--err:#F08585;--ok:#6FCF97;--row:#18232F;color-scheme:dark}
 [hidden]{display:none!important}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 var(--body)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 var(--body);display:flex;flex-direction:column}
 html,body{height:100%}
 /* One screen, like Treeinator. Square-ish sign: sign left, controls right. Strip sign (wide): sign on top, controls below in two columns. Phones: stacked, sign capped in height. */
-.app{max-width:1400px;margin:0 auto;height:100dvh;padding-block:8px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));display:grid;gap:8px;
+.app{max-width:1400px;width:100%;margin:0 auto;flex:1;min-height:0;height:auto;padding-block:8px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));display:grid;gap:8px;
  grid-template-columns:minmax(0,1fr) minmax(340px,440px);grid-template-rows:auto minmax(0,1fr);grid-template-areas:"top top" "stage ctrl"}
 .app.strip{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);grid-template-areas:"top" "stage" "ctrl"}
 .top{grid-area:top}
 
 /* top bar */
-.top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
 .title{display:grid;gap:2px;min-width:0}
 .title h1{font:600 26px/1 var(--display);margin:0;white-space:nowrap;letter-spacing:.01em}
 .title span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media (max-width:719px){.top{grid-template-columns:minmax(0,1fr) auto}.title span{display:none}#modeBadge{grid-column:1/-1;grid-row:2}}
+@media (max-width:719px){.top{grid-template-columns:minmax(0,1fr)}#viewSeg{grid-row:1}#modeBadge{grid-row:2}}
 
 /* status chip (like Treeinator's mode badge) */
 .mode{display:flex;align-items:center;gap:8px;text-align:left;padding:3px 8px 3px 4px;border-radius:8px;border:1.5px solid var(--muted);min-width:0;min-height:30px;white-space:nowrap;background:var(--panel)}
@@ -159,7 +159,7 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 
 /* phones and narrow windows: stack, let the page scroll, keep the sign short */
 @media (max-width:759px){
- .app,.app.strip{height:auto;min-height:100dvh;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;grid-template-areas:"top" "stage" "ctrl"}
+ .app,.app.strip{height:auto;min-height:auto;flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;grid-template-areas:"top" "stage" "ctrl"}
  .ctrl{overflow:visible}
  .app.strip .view{grid-template-columns:minmax(0,1fr)}
  .title h1{font-size:24px}
@@ -239,3 +239,16 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 #lcdImg{display:block;max-width:100%;max-height:100%;object-fit:contain}
 #lcdImg.px,#lcdView{image-rendering:pixelated}
 .res{font:500 10px var(--mono);letter-spacing:.06em;color:#7d8a99;text-align:center}
+
+
+/* the banner: full width, no buttons, reaches up under the status bar of the full-screen app */
+.banner{position:relative;flex:none;height:calc(58px + env(safe-area-inset-top,0px));overflow:hidden;background:linear-gradient(180deg,#0b0614,#1d0d33);border-bottom:1px solid #3a2560}
+.banner canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.banner .bn{position:absolute;left:0;right:0;bottom:0;height:50px;display:flex;align-items:center;justify-content:center;gap:12px;padding:0 12px;pointer-events:none;background:radial-gradient(ellipse 250px 24px at 50% 45%,#0b0614e6,#0b061400)}
+.banner h1{margin:0 0 14px;font:600 30px/1 var(--display);letter-spacing:.04em;white-space:nowrap;background:linear-gradient(90deg,#ff3d7f,#ffd43b,#22d3ee,#8b5cf6,#ff3d7f);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+ animation:neonSlide 6s linear infinite,neonBeat .484s ease-out infinite}
+.banner span{margin-bottom:14px;color:#d9cdee;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 4px #000,0 0 8px #000}
+@keyframes neonSlide{to{background-position:300% 0}}
+@keyframes neonBeat{0%{filter:drop-shadow(0 0 8px #ff3d7fcc)}100%{filter:drop-shadow(0 0 1px #ff3d7f44)}}
+@media (max-width:719px){.banner span{display:none}.banner h1{font-size:26px}}
+@media (prefers-reduced-motion:reduce){.banner h1{animation:none}}

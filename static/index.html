@@ -7,7 +7,7 @@
 <title>Signinator</title>
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Signinator"><meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,10 +15,10 @@
 <link rel="stylesheet" href="/static/style.css?v=BUILD">
 <style>html{touch-action:manipulation;-webkit-text-size-adjust:100%}</style><script>/* no zooming on phones (iPhone Safari ignores user-scalable=no for pinches, so stop the gesture itself) */['gesturestart','gesturechange'].forEach(function(k){document.addEventListener(k,function(e){e.preventDefault()},{passive:false})});document.addEventListener('touchmove',function(e){if(e.touches.length>1||(e.scale!==undefined&&e.scale!==1))e.preventDefault()},{passive:false});</script></head>
 <body>
+<header class="banner" id="banner"><canvas id="bannerCv" aria-hidden="true"></canvas><div class="bn"><h1>Signinator</h1><span>Write a message, pick a look, send it to the sign.</span></div></header>
 <div class="app" id="app" data-view="text">
  <div class="top">
-  <div class="title"><h1>Signinator</h1><span>Write a message, pick a look, send it to the sign.</span></div>
-  <button type="button" id="modeBadge" class="mode" title="Open settings"><b id="modeName">…</b><span id="modeInfo">Connecting</span></button>
+   <button type="button" id="modeBadge" class="mode" title="Open settings"><b id="modeName">…</b><span id="modeInfo">Connecting</span></button>
   <div class="seg2" id="viewSeg" role="group" aria-label="View">
    <button type="button" aria-pressed="true" data-v="text">Text</button><button type="button" aria-pressed="false" data-v="fx">Effects</button><button type="button" aria-pressed="false" data-v="gif">GIFs</button><button type="button" id="reloadBtn" title="Reload the app with the latest version" aria-label="Reload app">↻</button><button type="button" id="setBtn" title="Settings" aria-label="Settings">⚙</button>
   </div>
@@ -319,5 +319,42 @@
 </dialog>
 <script src="/static/app.js?v=BUILD"></script>
 <script>/* installable app with an offline screen (sw.js) */if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});</script>
+<script>
+/* the banner: a full-width LED-dot equalizer pumping at about 124 bpm, disco beams sweeping, notes floating up */
+(function () {
+  var cv = document.getElementById('bannerCv'); if (!cv) return;
+  var x = cv.getContext('2d'), still = matchMedia('(prefers-reduced-motion: reduce)').matches, W = 0, H = 0, cols = 0, lv = [], pk = [], notes = [], lastEq = 0, last = 0;
+  var COL = ['#22d3ee', '#4f8bff', '#8b5cf6', '#c026d3', '#ff3d7f', '#ff7a3d', '#ffd43b'], ROWS = 7, STEP = 7;
+  function size() { var r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1); W = r.width; H = r.height; cv.width = W * d; cv.height = H * d; x.setTransform(d, 0, 0, d, 0, 0);
+    cols = Math.ceil(W / STEP); lv = []; pk = []; for (var i = 0; i < cols; i++) { lv.push(1); pk.push(1); } }
+  function frame(now) {
+    var t = now / 1000, dt = last ? Math.min(0.1, t - last) : 0; last = t, beat = Math.pow(1 - ((t * 124 / 60) % 1), 2.5);
+    x.clearRect(0, 0, W, H);
+    // disco beams from a ball above the middle
+    var C = ['#ff3d7f', '#22d3ee', '#ffd43b', '#8b5cf6'];
+    for (var b = 0; b < 6; b++) { var a = Math.PI / 2 + Math.sin(t * 0.7 + b * 1.3) * 1.2; x.globalAlpha = 0.07 + 0.06 * beat; x.fillStyle = C[b % 4];
+      x.beginPath(); x.moveTo(W / 2, -10); x.lineTo(W / 2 + Math.cos(a - 0.06) * W, -10 + Math.sin(a - 0.06) * W); x.lineTo(W / 2 + Math.cos(a + 0.06) * W, -10 + Math.sin(a + 0.06) * W); x.fill(); }
+    x.globalAlpha = 1;
+    // equalizer: levels follow the beat, a bass bump in the middle, peaks that fall slowly
+    if (now - lastEq > 70 || still) { lastEq = now;
+      for (var c = 0; c < cols; c++) { var u = c / cols, shape = 0.55 + 0.45 * Math.sin(u * Math.PI);
+        var target = still ? 2 + 4 * shape * Math.abs(Math.sin(c * 0.7)) : 0.6 + beat * shape * (3.2 + 2.8 * Math.abs(Math.sin(c * 0.37 + t * 1.3))) + Math.random() * 1.4;
+        lv[c] += (target - lv[c]) * 0.55; pk[c] = Math.max(pk[c] - 0.18, lv[c]); } }
+    var y0 = H - 4;
+    for (var c2 = 0; c2 < cols; c2++) for (var r = 0; r < ROWS; r++) {
+      var on = r < Math.round(lv[c2]), top = r === Math.min(ROWS - 1, Math.round(pk[c2]));
+      x.fillStyle = on || top ? COL[r] : '#1f1630'; x.globalAlpha = on ? 0.9 : top ? 0.75 : 0.6;
+      x.beginPath(); x.arc(3.5 + c2 * STEP, y0 - r * STEP, 2.3, 0, 7); x.fill();
+    }
+    x.globalAlpha = 1;
+    // notes drifting up
+    if (!still && Math.random() < dt * 1.5) notes.push({ x: Math.random() * W, y: H, v: 14 + Math.random() * 12, c: C[Math.floor(Math.random() * 4)], s: Math.random() < 0.5 ? '♪' : '♫' });
+    x.font = '700 14px sans-serif'; notes = notes.filter(function (n) { n.y -= n.v * dt; x.globalAlpha = Math.max(0, Math.min(1, n.y / H)) * 0.8; x.fillStyle = n.c; x.fillText(n.s, n.x + Math.sin(t * 2 + n.x) * 4, n.y); return n.y > -10; });
+    x.globalAlpha = 1;
+    if (!still) requestAnimationFrame(frame);
+  }
+  size(); addEventListener('resize', size); requestAnimationFrame(frame);
+})();
+</script>
 </body>
 </html>
