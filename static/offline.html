@@ -1,50 +1,61 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0A0E15"><title>Signinator is offline</title>
+<meta name="theme-color" content="#120a1f"><title>Signinator is offline</title>
 <style>
 html,body{height:100%;margin:0}
-body{background:#0A0E15;color:#eef2f5;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;box-sizing:border-box}
+body{background:#120a1f;color:#eef2f5;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;box-sizing:border-box}
 main{max-width:420px}
 img{width:100%;max-width:320px;height:auto;border-radius:16px;box-shadow:0 10px 40px #0008;image-rendering:auto}
-h1{font-size:24px;margin:18px 0 6px;color:#ff5a4e}
+h1{font-size:24px;margin:18px 0 6px;color:#ff3d7f}
 p{margin:0 0 14px;color:#b9c3cc}
-button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 22px;background:#ff5a4e;color:#111;cursor:pointer}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 22px;background:#ff3d7f;color:#111;cursor:pointer}
 small{display:block;margin-top:12px;color:#7d8894}
 canvas{width:100%;max-width:320px;aspect-ratio:320/170;border-radius:16px;box-shadow:0 10px 40px #0008;touch-action:manipulation;cursor:pointer;display:block;margin:0 auto}
 canvas[hidden]{display:none}
 .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 button.ghost{background:transparent;color:inherit;box-shadow:inset 0 0 0 2px currentColor}
 </style></head><body><main>
-<img id="pic" src="/static/offline.gif" alt="The sign hanging by one chain, flickering BRB" width="320" height="240">
-<canvas id="game" hidden aria-label="A little jumping game"></canvas>
-<h1>The sign is on a break.</h1>
-<p>Signinator isn’t answering. BRB! This page reloads by itself when it’s back.</p>
+<img id="pic" src="/static/offline.gif" alt="The sign dancing under a disco ball: DANCE BREAK" width="320" height="240">
+<canvas id="game" hidden aria-label="A little dancing game"></canvas>
+<h1>Signinator is on a dance break.</h1>
+<p>The music stopped for a sec. Signinator isn’t answering; this page reloads by itself when the party’s back on.</p>
 <div class="btns"><button type="button" id="play">Play while you wait</button> <button type="button" id="again" class="ghost">Try again</button></div>
 <small id="st">Checking every 5 seconds…</small>
 </main>
 <script>
 // back as soon as Signinator answers again
+var preview = /offline\.html$/.test(location.pathname);   // opened from Settings to look at it
 var n = 5, st = document.getElementById('st');
+if (preview) { st.textContent = 'Preview: this is what the app shows when the server can’t be reached.'; var ag = document.getElementById('again'); ag.textContent = 'Back to the app'; ag.onclick = function () { location.href = '/'; }; }
 function check() {
   fetch('/static/', { cache: 'no-store' }).then(function (r) { if (r.status < 500) location.reload(); }).catch(function () {});
 }
-setInterval(function () { n--; if (n <= 0) { n = 5; check(); } st.textContent = navigator.onLine === false ? 'Your phone is offline: check its Wi-Fi.' : 'Checking again in ' + n + ' s…'; }, 1000);
-document.getElementById('again').onclick = function () { st.textContent = 'Checking…'; check(); setTimeout(function () { location.reload(); }, 600); };
-window.addEventListener('online', check);
+if (!preview) setInterval(function () { n--; if (n <= 0) { n = 5; check(); } st.textContent = navigator.onLine === false ? 'Your phone is offline: check its Wi-Fi.' : 'Checking again in ' + n + ' s…'; }, 1000);
+if (!preview) document.getElementById('again').onclick = function () { st.textContent = 'Checking…'; check(); setTimeout(function () { location.reload(); }, 600); };
+if (!preview) window.addEventListener('online', check);
 </script><script>
-window.GAME = { key: 'signinator-hop-best', ground: '#3a3a42', line: '#5c5c66', text: '#ffd43b', over: 'The sign fell over. BRB.',
-  sky: function (x, W, H, t) { x.fillStyle = '#14131a'; x.fillRect(0, 0, W, H); for (var i = 0; i < 5; i++) { var bx = ((i * 90 - t * 25) % (W + 80) + W + 80) % (W + 80) - 40; x.fillStyle = '#22212b'; x.fillRect(bx, 60 - (i % 3) * 18, 50, 90); x.fillStyle = '#ffd43b33'; for (var j = 0; j < 4; j++) x.fillRect(bx + 8 + (j % 2) * 22, 70 - (i % 3) * 18 + Math.floor(j / 2) * 20, 10, 8); } },
-  hero: { w: 34, h: 42, draw: function (x, t, air, dead) {
-    var b = air ? 0 : Math.abs(Math.sin(t * 12)) * 3; x.translate(0, -b); if (dead) { x.rotate(0.5); }
-    x.fillStyle = '#888'; x.fillRect(15, -16, 4, 16);
-    x.fillStyle = '#ffd43b'; x.fillRect(0, -42, 34, 26); x.fillStyle = '#14131a'; x.fillRect(2, -40, 30, 22);
-    x.fillStyle = (Math.floor(t * 3) % 2) ? '#ff6b6b' : '#ffd43b'; x.font = '800 12px system-ui,sans-serif'; x.textAlign = 'center'; x.fillText(dead ? 'OOF' : 'BRB', 17, -25); x.textAlign = 'left';
-    x.fillStyle = '#ddd'; x.fillRect(10, -2, 4, 2); x.fillRect(20, -2, 4, 2); } },
+window.GAME = { key: 'signinator-dance-best', ground: '#1c1030', line: '#3a2560', text: '#ff3d7f', over: 'Record scratch! The music stopped.',
+  sky: function (x, W, H, t) {
+    x.fillStyle = '#120a1f'; x.fillRect(0, 0, W, H);
+    var c = ['#ff3d7f', '#ffd43b', '#4dd4ac', '#4dabf7', '#b197fc'];
+    x.globalAlpha = 0.18; for (var i = 0; i < 8; i++) { var a = t * 1.2 + i * 0.785; x.strokeStyle = c[i % 5]; x.lineWidth = 3; x.beginPath(); x.moveTo(W / 2, 18); x.lineTo(W / 2 + Math.cos(a) * 260, 18 + Math.abs(Math.sin(a)) * 200); x.stroke(); } x.globalAlpha = 1;
+    x.fillStyle = '#c9ced6'; x.beginPath(); x.arc(W / 2, 18, 11, 0, 7); x.fill(); x.fillStyle = '#8a919c'; x.fillRect(W / 2 - 11, 17, 22, 1.5); x.fillRect(W / 2 - 1, 7, 1.5, 22);
+    x.font = '700 16px sans-serif'; for (var i = 0; i < 6; i++) { var nx = ((i * 61 - t * 30) % (W + 40) + W + 40) % (W + 40) - 20, ny = 50 + (i * 29) % 60 + Math.sin(t * 3 + i) * 6; x.fillStyle = c[i % 5]; x.globalAlpha = 0.55; x.fillText(i % 2 ? '♪' : '♫', nx, ny); } x.globalAlpha = 1;
+  },
+  hero: { w: 34, h: 44, draw: function (x, t, air, dead) {
+    var c = ['#ff3d7f', '#ffd43b', '#4dd4ac', '#4dabf7'], k = Math.sin(t * 10), b = air ? 0 : Math.abs(k) * 4;
+    x.translate(0, -b); if (dead) x.rotate(0.45);
+    x.strokeStyle = '#ddd'; x.lineWidth = 3; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(10, -14); x.lineTo(air ? 2 : 6 + k * 5, -2); x.moveTo(24, -14); x.lineTo(air ? 32 : 28 - k * 5, -2); x.stroke();
+    x.beginPath(); x.moveTo(1, -32); x.lineTo(-7, -38 - k * 6); x.moveTo(33, -32); x.lineTo(41, -38 + k * 6); x.stroke();
+    x.fillStyle = '#141414'; x.strokeStyle = c[Math.floor(t * 4) % 4]; x.lineWidth = 2.5; x.beginPath(); x.rect(0, -44, 34, 30); x.fill(); x.stroke();
+    x.fillStyle = dead ? '#888' : c[(Math.floor(t * 4) + 1) % 4]; x.font = '800 11px system-ui,sans-serif'; x.textAlign = 'center'; x.fillText(dead ? 'OOF' : (Math.floor(t * 2) % 2 ? '♪ ♫' : 'DJ!'), 17, -25); x.textAlign = 'left';
+  } },
   obs: [
-    { w: 18, h: 24, draw: function (x, w, h) { x.fillStyle = '#ff922b'; x.beginPath(); x.moveTo(w / 2, -h); x.lineTo(w, 0); x.lineTo(0, 0); x.fill(); x.fillStyle = '#fff'; x.fillRect(4, -12, w - 8, 3); } },
-    { w: 30, h: 14, draw: function (x, w, h) { x.fillStyle = '#e03131'; x.fillRect(0, -h, w, 6); x.fillStyle = '#fff'; x.fillRect(6, -h, 6, 6); x.fillRect(18, -h, 6, 6); x.fillStyle = '#888'; x.fillRect(3, -8, 3, 8); x.fillRect(w - 6, -8, 3, 8); } },
-    { w: 24, h: 30, draw: function (x, w, h) { x.fillStyle = '#495057'; x.fillRect(0, -h, w, h); x.fillStyle = '#ffd43b'; x.font = '800 8px sans-serif'; x.fillText('404', 4, -h / 2 + 3); } }
+    { w: 22, h: 22, draw: function (x, w, h) { x.fillStyle = '#111'; x.beginPath(); x.arc(11, -11, 11, 0, 7); x.fill(); x.strokeStyle = '#333'; x.lineWidth = 1; x.beginPath(); x.arc(11, -11, 7, 0, 7); x.stroke(); x.fillStyle = '#ff3d7f'; x.beginPath(); x.arc(11, -11, 3.5, 0, 7); x.fill(); x.strokeStyle = '#ffd43b'; x.lineWidth = 2; x.beginPath(); x.moveTo(4, -18); x.lineTo(18, -4); x.stroke(); } },
+    { w: 16, h: 30, draw: function (x, w, h) { x.fillStyle = '#868e96'; x.fillRect(6, -22, 4, 22); x.fillStyle = '#495057'; x.beginPath(); x.ellipse(8, -26, 6, 8, 0, 0, 7); x.fill(); x.fillStyle = '#adb5bd'; x.fillRect(3, -30, 10, 1.5); x.fillRect(3, -26, 10, 1.5); } },
+    { w: 28, h: 20, draw: function (x, w, h) { x.fillStyle = '#4dabf7'; x.fillRect(0, -20, 28, 20); x.fillStyle = '#111'; x.beginPath(); x.arc(8, -10, 5, 0, 7); x.arc(20, -10, 5, 0, 7); x.fill(); x.strokeStyle = '#ff3d7f'; x.lineWidth = 2; x.beginPath(); x.moveTo(3, -24); x.lineTo(25, -24); x.stroke(); x.fillStyle = '#fff'; x.font = '700 7px sans-serif'; x.fillText('MUTE', 6, -26); } }
   ] };
 // Play while you wait: a tiny jump-over-things runner, drawn on a canvas (no files needed, so it works offline)
 (function () {
@@ -84,7 +95,7 @@ window.GAME = { key: 'signinator-hop-best', ground: '#3a3a42', line: '#5c5c66', 
     x.save(); x.translate(40, G - s.y); T.hero.draw(x, s.t, s.y > 0, s.over); x.restore();
     x.fillStyle = T.text; x.font = '700 13px system-ui,sans-serif'; x.textAlign = 'right';
     x.fillText(String(Math.floor(s.score)).padStart(5, '0') + (best ? '   best ' + best : ''), W - 10, 20);
-    if (s.over) { x.textAlign = 'center'; x.font = '800 18px system-ui,sans-serif'; x.fillText(T.over, W / 2, 62); x.font = '600 12px system-ui,sans-serif'; x.fillText('tap to try again', W / 2, 82); }
+    if (s.over) { x.textAlign = 'center'; for (var fs = 18; fs > 10; fs--) { x.font = '800 ' + fs + 'px system-ui,sans-serif'; if (x.measureText(T.over).width < W - 24) break; } x.fillText(T.over, W / 2, 62); x.font = '600 12px system-ui,sans-serif'; x.fillText('tap to try again', W / 2, 82); }
     else if (s.t < 2.2) { x.textAlign = 'center'; x.font = '600 12px system-ui,sans-serif'; x.fillText('tap to jump', W / 2, 62); }
   }
 })();
