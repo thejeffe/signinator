@@ -906,6 +906,18 @@ $("dim").onchange = async () => {
   $("setBtn").addEventListener("click", openDlg);
   $("modeBadge").addEventListener("click", openDlg);
   $("sCancel").addEventListener("click", () => dlg.close());
+  // Restart: the server exits, systemd starts it again; wait until it answers, then reload the page
+  $("sRestart").addEventListener("click", async () => {
+    if (!confirm("Restart Signinator? The sign and the music relay stop for a few seconds, then pick up again.")) return;
+    const b = $("sRestart"); b.disabled = true; say($("sMsg"), "Restarting Signinator…");
+    try { await postJSON("/api/restart", {}); } catch (e) { b.disabled = false; say($("sMsg"), e.message, true); return; }
+    await sleep(2500);
+    for (let i = 0; i < 40; i++) {
+      try { const r = await fetch("/health", { cache: "no-store" }); if (r.ok) { location.replace("/?t=" + Date.now()); return; } } catch (e) { /* still starting */ }
+      await sleep(1000);
+    }
+    b.disabled = false; say($("sMsg"), "Signinator hasn't come back. Check: journalctl -u signinator", true);
+  });
   // links into WLED's own setup pages, for whatever host is typed in
   function renderWledLinks() {
     const box = $("sWledLinks"), host = f.host.value.trim();

@@ -57,6 +57,24 @@ def version():
     return {"build": BUILD}
 
 
+@app.post("/api/restart")
+async def restart(request: Request):
+    """Settings -> Restart Signinator. The process exits with a failure code
+    and systemd (Restart=on-failure) starts it again, so no sudo is needed.
+    JSON only, so a plain web form on another site can't trigger it."""
+    if not request.headers.get("content-type", "").lower().startswith("application/json"):
+        return JSONResponse({"error": "Send JSON."}, status_code=415)
+    print("restart asked for from the web page", flush=True)
+
+    def _bye():
+        try:
+            engine.stop()
+        finally:
+            os._exit(1)
+    asyncio.get_running_loop().call_later(0.4, _bye)
+    return {"ok": True, "restarting": True}
+
+
 # ---- WLED controller ----
 @app.get("/api/wled")
 def get_wled(host: str = ""):
