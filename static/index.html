@@ -317,5 +317,6 @@
  </form>
 </dialog>
 <script src="/static/app.js?v=BUILD"></script>
+<script>/* installable app with an offline screen (sw.js) */if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});</script>
 </body>
 </html>

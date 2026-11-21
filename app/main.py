@@ -35,6 +35,13 @@ def _startup():
     engine.start()
 
 
+@app.get("/sw.js")
+def service_worker():
+    # the installable app's service worker (offline screen); served from the root so it covers the whole app
+    return FileResponse(os.path.join(_STATIC, "sw.js"), media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
 @app.get("/")
 def index():
     # no-store on the HTML so the page (and its versioned ?v= asset pointers)

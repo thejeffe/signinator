@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A0E15"><title>Signinator is offline</title>
+<style>
+html,body{height:100%;margin:0}
+body{background:#0A0E15;color:#eef2f5;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;box-sizing:border-box}
+main{max-width:420px}
+img{width:100%;max-width:320px;height:auto;border-radius:16px;box-shadow:0 10px 40px #0008;image-rendering:auto}
+h1{font-size:24px;margin:18px 0 6px;color:#ff5a4e}
+p{margin:0 0 14px;color:#b9c3cc}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 22px;background:#ff5a4e;color:#111;cursor:pointer}
+small{display:block;margin-top:12px;color:#7d8894}
+</style></head><body><main>
+<img src="/static/offline.gif" alt="The sign hanging by one chain, flickering BRB" width="320" height="240">
+<h1>The sign is on a break.</h1>
+<p>Signinator isn’t answering. BRB! This page reloads by itself when it’s back.</p>
+<button type="button" id="again">Try again</button>
+<small id="st">Checking every 5 seconds…</small>
+</main>
+<script>
+// back as soon as Signinator answers again
+var n = 5, st = document.getElementById('st');
+function check() {
+  fetch('/static/', { cache: 'no-store' }).then(function (r) { if (r.status < 500) location.reload(); }).catch(function () {});
+}
+setInterval(function () { n--; if (n <= 0) { n = 5; check(); } st.textContent = navigator.onLine === false ? 'Your phone is offline: check its Wi-Fi.' : 'Checking again in ' + n + ' s…'; }, 1000);
+document.getElementById('again').onclick = function () { st.textContent = 'Checking…'; check(); setTimeout(function () { location.reload(); }, 600); };
+window.addEventListener('online', check);
+</script></body></html>
