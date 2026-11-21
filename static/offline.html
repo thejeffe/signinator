@@ -11,11 +11,16 @@ h1{font-size:24px;margin:18px 0 6px;color:#ff5a4e}
 p{margin:0 0 14px;color:#b9c3cc}
 button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 22px;background:#ff5a4e;color:#111;cursor:pointer}
 small{display:block;margin-top:12px;color:#7d8894}
+canvas{width:100%;max-width:320px;aspect-ratio:320/170;border-radius:16px;box-shadow:0 10px 40px #0008;touch-action:manipulation;cursor:pointer;display:block;margin:0 auto}
+canvas[hidden]{display:none}
+.btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+button.ghost{background:transparent;color:inherit;box-shadow:inset 0 0 0 2px currentColor}
 </style></head><body><main>
-<img src="/static/offline.gif" alt="The sign hanging by one chain, flickering BRB" width="320" height="240">
+<img id="pic" src="/static/offline.gif" alt="The sign hanging by one chain, flickering BRB" width="320" height="240">
+<canvas id="game" hidden aria-label="A little jumping game"></canvas>
 <h1>The sign is on a break.</h1>
 <p>Signinator isn’t answering. BRB! This page reloads by itself when it’s back.</p>
-<button type="button" id="again">Try again</button>
+<div class="btns"><button type="button" id="play">Play while you wait</button> <button type="button" id="again" class="ghost">Try again</button></div>
 <small id="st">Checking every 5 seconds…</small>
 </main>
 <script>
@@ -27,4 +32,61 @@ function check() {
 setInterval(function () { n--; if (n <= 0) { n = 5; check(); } st.textContent = navigator.onLine === false ? 'Your phone is offline: check its Wi-Fi.' : 'Checking again in ' + n + ' s…'; }, 1000);
 document.getElementById('again').onclick = function () { st.textContent = 'Checking…'; check(); setTimeout(function () { location.reload(); }, 600); };
 window.addEventListener('online', check);
-</script></body></html>
+</script><script>
+window.GAME = { key: 'signinator-hop-best', ground: '#3a3a42', line: '#5c5c66', text: '#ffd43b', over: 'The sign fell over. BRB.',
+  sky: function (x, W, H, t) { x.fillStyle = '#14131a'; x.fillRect(0, 0, W, H); for (var i = 0; i < 5; i++) { var bx = ((i * 90 - t * 25) % (W + 80) + W + 80) % (W + 80) - 40; x.fillStyle = '#22212b'; x.fillRect(bx, 60 - (i % 3) * 18, 50, 90); x.fillStyle = '#ffd43b33'; for (var j = 0; j < 4; j++) x.fillRect(bx + 8 + (j % 2) * 22, 70 - (i % 3) * 18 + Math.floor(j / 2) * 20, 10, 8); } },
+  hero: { w: 34, h: 42, draw: function (x, t, air, dead) {
+    var b = air ? 0 : Math.abs(Math.sin(t * 12)) * 3; x.translate(0, -b); if (dead) { x.rotate(0.5); }
+    x.fillStyle = '#888'; x.fillRect(15, -16, 4, 16);
+    x.fillStyle = '#ffd43b'; x.fillRect(0, -42, 34, 26); x.fillStyle = '#14131a'; x.fillRect(2, -40, 30, 22);
+    x.fillStyle = (Math.floor(t * 3) % 2) ? '#ff6b6b' : '#ffd43b'; x.font = '800 12px system-ui,sans-serif'; x.textAlign = 'center'; x.fillText(dead ? 'OOF' : 'BRB', 17, -25); x.textAlign = 'left';
+    x.fillStyle = '#ddd'; x.fillRect(10, -2, 4, 2); x.fillRect(20, -2, 4, 2); } },
+  obs: [
+    { w: 18, h: 24, draw: function (x, w, h) { x.fillStyle = '#ff922b'; x.beginPath(); x.moveTo(w / 2, -h); x.lineTo(w, 0); x.lineTo(0, 0); x.fill(); x.fillStyle = '#fff'; x.fillRect(4, -12, w - 8, 3); } },
+    { w: 30, h: 14, draw: function (x, w, h) { x.fillStyle = '#e03131'; x.fillRect(0, -h, w, 6); x.fillStyle = '#fff'; x.fillRect(6, -h, 6, 6); x.fillRect(18, -h, 6, 6); x.fillStyle = '#888'; x.fillRect(3, -8, 3, 8); x.fillRect(w - 6, -8, 3, 8); } },
+    { w: 24, h: 30, draw: function (x, w, h) { x.fillStyle = '#495057'; x.fillRect(0, -h, w, h); x.fillStyle = '#ffd43b'; x.font = '800 8px sans-serif'; x.fillText('404', 4, -h / 2 + 3); } }
+  ] };
+// Play while you wait: a tiny jump-over-things runner, drawn on a canvas (no files needed, so it works offline)
+(function () {
+  var T = window.GAME, cv = document.getElementById('game'), pic = document.getElementById('pic'), btn = document.getElementById('play');
+  var W = 320, H = 170, G = 140, x = cv.getContext('2d'), dpr = Math.min(3, window.devicePixelRatio || 1);
+  cv.width = W * dpr; cv.height = H * dpr; x.scale(dpr, dpr);
+  var best = 0; try { best = +localStorage.getItem(T.key) || 0; } catch (e) {}
+  var s, raf = 0, last = 0;
+  function reset() { s = { y: 0, vy: 0, obs: [], next: 60, sp: 150, t: 0, score: 0, over: false, deco: [] }; }
+  function jump() {
+    if (!s || s.over) { reset(); return; }
+    if (s.y === 0) { s.vy = 420; }
+  }
+  function start() { pic.hidden = true; cv.hidden = false; btn.textContent = 'Jump'; reset(); last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); }
+  btn.onclick = function () { if (cv.hidden) start(); else jump(); };
+  cv.addEventListener('pointerdown', function (e) { e.preventDefault(); jump(); });
+  addEventListener('keydown', function (e) { if (cv.hidden) return; if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); } });
+  function hit(o) { var px = 40, pw = T.hero.w - 8, py = G - s.y - T.hero.h + 4; return px + pw > o.x + 3 && px < o.x + o.w - 3 && py + T.hero.h - 6 > G - o.h; }
+  function loop(ts) {
+    var dt = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+    if (!s.over) {
+      s.t += dt; s.sp = 150 + s.t * 6; s.score += dt * 10;
+      s.vy -= 1300 * dt; s.y = Math.max(0, s.y + s.vy * dt); if (s.y === 0) s.vy = 0;
+      s.next -= s.sp * dt;
+      if (s.next <= 0) { var k = T.obs[Math.floor(Math.random() * T.obs.length)]; s.obs.push({ x: W + 10, w: k.w, h: k.h, k: k }); s.next = 140 + Math.random() * 160 + s.sp * 0.25; }
+      for (var i = s.obs.length - 1; i >= 0; i--) { var o = s.obs[i]; o.x -= s.sp * dt; if (o.x < -40) s.obs.splice(i, 1); else if (hit(o)) { s.over = true; if (s.score > best) { best = Math.floor(s.score); try { localStorage.setItem(T.key, best); } catch (e) {} } } }
+    }
+    draw(); raf = requestAnimationFrame(loop);
+  }
+  function draw() {
+    x.clearRect(0, 0, W, H); T.sky(x, W, H, s.t);
+    x.fillStyle = T.ground; x.fillRect(0, G, W, H - G);
+    x.strokeStyle = T.line; x.lineWidth = 2; x.beginPath(); x.moveTo(0, G + 1); x.lineTo(W, G + 1); x.stroke();
+    // ground speckles scroll by
+    x.fillStyle = T.line; for (var i = 0; i < 14; i++) { var gx = ((i * 53 - s.t * s.sp) % W + W) % W; x.fillRect(gx, G + 8 + (i * 7) % 18, 3 + (i % 3), 2); }
+    s.obs.forEach(function (o) { x.save(); x.translate(o.x, G); o.k.draw(x, o.w, o.h); x.restore(); });
+    x.save(); x.translate(40, G - s.y); T.hero.draw(x, s.t, s.y > 0, s.over); x.restore();
+    x.fillStyle = T.text; x.font = '700 13px system-ui,sans-serif'; x.textAlign = 'right';
+    x.fillText(String(Math.floor(s.score)).padStart(5, '0') + (best ? '   best ' + best : ''), W - 10, 20);
+    if (s.over) { x.textAlign = 'center'; x.font = '800 18px system-ui,sans-serif'; x.fillText(T.over, W / 2, 62); x.font = '600 12px system-ui,sans-serif'; x.fillText('tap to try again', W / 2, 82); }
+    else if (s.t < 2.2) { x.textAlign = 'center'; x.font = '600 12px system-ui,sans-serif'; x.fillText('tap to jump', W / 2, 62); }
+  }
+})();
+</script>
+</body></html>
