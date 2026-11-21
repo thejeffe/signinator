@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#120a1f"><title>Signinator is offline</title>
 <style>
 html,body{height:100%;margin:0}
@@ -15,7 +15,7 @@ canvas{width:100%;max-width:320px;aspect-ratio:320/170;border-radius:16px;box-sh
 canvas[hidden]{display:none}
 .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 button.ghost{background:transparent;color:inherit;box-shadow:inset 0 0 0 2px currentColor}
-</style></head><body><main>
+</style><style>html{touch-action:manipulation;-webkit-text-size-adjust:100%}</style><script>/* no zooming on phones (iPhone Safari ignores user-scalable=no for pinches, so stop the gesture itself) */['gesturestart','gesturechange'].forEach(function(k){document.addEventListener(k,function(e){e.preventDefault()},{passive:false})});document.addEventListener('touchmove',function(e){if(e.touches.length>1||(e.scale!==undefined&&e.scale!==1))e.preventDefault()},{passive:false});</script></head><body><main>
 <img id="pic" src="/static/offline.gif" alt="The sign dancing under a disco ball: DANCE BREAK" width="320" height="240">
 <canvas id="game" hidden aria-label="A little dancing game"></canvas>
 <h1>Signinator is on a dance break.</h1>
