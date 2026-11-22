@@ -11,11 +11,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Signinator"><meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Monoton&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="/static/style.css?v=BUILD">
 <style>html{touch-action:manipulation;-webkit-text-size-adjust:100%}</style><script>/* no zooming on phones (iPhone Safari ignores user-scalable=no for pinches, so stop the gesture itself) */['gesturestart','gesturechange'].forEach(function(k){document.addEventListener(k,function(e){e.preventDefault()},{passive:false})});document.addEventListener('touchmove',function(e){if(e.touches.length>1||(e.scale!==undefined&&e.scale!==1))e.preventDefault()},{passive:false});</script></head>
 <body>
-<header class="banner" id="banner"><canvas id="bannerCv" aria-hidden="true"></canvas><div class="bn"><h1>Signinator</h1><span>Write a message, pick a look, send it to the sign.</span></div></header>
+<header class="banner" id="banner"><canvas id="bannerCv" aria-hidden="true"></canvas><div class="bn"><img class="bnicon" src="/static/icon.svg" alt="" width="40" height="40"><h1 class="neontube">Signinator</h1><span>Write a message, pick a look, send it to the sign.</span></div></header>
 <div class="app" id="app" data-view="text">
  <div class="top">
    <button type="button" id="modeBadge" class="mode" title="Open settings"><b id="modeName">…</b><span id="modeInfo">Connecting</span></button>

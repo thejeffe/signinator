@@ -266,3 +266,11 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 .amenu .menupop button:hover:not(:disabled),.amenu .menupop button:focus-visible{background:var(--row)}
 .amenu .menupop button svg{color:var(--accent);flex:none}
 .amenu .menupop #reloadBtn.upd span::after{content:" · update ready";color:var(--accent);font-weight:600}
+
+/* the name as a neon sign: Monoton's tube letters, pink glow, the odd flicker */
+.banner .bnicon{flex:none;border-radius:9px;margin-bottom:14px;filter:drop-shadow(0 0 6px #ff3d7f88)}
+.banner h1.neontube{font:400 30px/1 Monoton,var(--display);letter-spacing:.06em;text-transform:uppercase;background:none;-webkit-background-clip:initial;background-clip:initial;
+ color:#ffd6e6;text-shadow:0 0 2px #fff,0 0 6px #ff3d7f,0 0 12px #ff3d7f,0 0 22px #ff3d7f,0 0 36px #c026d3;animation:tubeFlicker 7s linear infinite;filter:none}
+@keyframes tubeFlicker{0%,18%,22%,25%,53%,57%,100%{opacity:1}20%,24%{opacity:.35}55%{opacity:.6}}
+@media (max-width:719px){.banner h1.neontube{font-size:24px}.banner .bnicon{width:32px;height:32px}}
+@media (prefers-reduced-motion:reduce){.banner h1.neontube{animation:none}}
