@@ -288,3 +288,4 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 .dlgbar .dlgmsg{flex-basis:100%;margin:0!important;font-size:13px}
 .dlgbar .dlgmsg:empty{display:none}
 #setDlg,#cueDlg{overflow:auto}
+.dlgbar .dlgtabs{flex-basis:100%;margin:2px 0 0!important}

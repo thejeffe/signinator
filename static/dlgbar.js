@@ -45,6 +45,9 @@
       }
       tools.appendChild(b);
     });
+    // the dialog's tabs (Settings: WLED, Layout, ...) stay up there too
+    var tabs = f.querySelector(':scope > [role="tablist"]');
+    if (tabs) { tabs.classList.add('dlgtabs'); bar.appendChild(tabs); }
     msgs.forEach(function (m) { m.classList.add('dlgmsg'); bar.appendChild(m); });
     if (!acts.querySelector('button')) acts.remove();
   });
