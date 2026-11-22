@@ -368,5 +368,6 @@
   new MutationObserver(function () { btn.classList.toggle('upd', rl.classList.contains('upd')); btn.title = rl.classList.contains('upd') ? 'Menu: an update is ready' : 'Menu'; }).observe(rl, { attributes: true, attributeFilter: ['class'] });
 })();
 </script>
+<script src="/static/downwatch.js" data-ping="/api/version" data-offline="/static/offline.html"></script>
 </body>
 </html>
