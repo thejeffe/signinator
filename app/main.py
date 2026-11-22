@@ -42,8 +42,8 @@ def service_worker():
                         headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
 
-@app.get("/apple-touch-icon.png")
-@app.get("/apple-touch-icon-precomposed.png")
+@app.api_route("/apple-touch-icon.png", methods=["GET", "HEAD"])
+@app.api_route("/apple-touch-icon-precomposed.png", methods=["GET", "HEAD"])
 def touch_icon():
     # Safari (Mac "Add to Dock", iPhone home screen) also looks here for the app's icon
     return FileResponse(os.path.join(_STATIC, "icon-180.png"), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
