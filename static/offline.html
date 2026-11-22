@@ -6,12 +6,13 @@
 html,body{height:100%;margin:0}
 body{background:#120a1f;color:#eef2f5;font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;box-sizing:border-box}
 main{max-width:420px}
+@media (min-width:700px){main{max-width:640px}img{max-width:420px}h1{font-size:30px}}
 img{width:100%;max-width:320px;height:auto;border-radius:16px;box-shadow:0 10px 40px #0008;image-rendering:auto}
 h1{font-size:24px;margin:18px 0 6px;color:#ff3d7f}
 p{margin:0 0 14px;color:#b9c3cc}
 button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:11px 22px;background:#ff3d7f;color:#111;cursor:pointer}
 small{display:block;margin-top:12px;color:#7d8894}
-canvas{width:100%;max-width:320px;aspect-ratio:320/170;border-radius:16px;box-shadow:0 10px 40px #0008;touch-action:manipulation;cursor:pointer;display:block;margin:0 auto}
+canvas{width:min(100%,600px,calc(62vh * var(--ar,1.88)));max-width:none;aspect-ratio:320/170;border-radius:16px;box-shadow:0 10px 40px #0008;touch-action:manipulation;cursor:pointer;display:block;margin:0 auto}
 canvas[hidden]{display:none}
 .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 button.ghost{background:transparent;color:inherit;box-shadow:inset 0 0 0 2px currentColor}
@@ -61,7 +62,12 @@ window.GAME = { key: 'signinator-dance-best', ground: '#1c1030', line: '#3a2560'
 (function () {
   var T = window.GAME, cv = document.getElementById('game'), pic = document.getElementById('pic'), btn = document.getElementById('play');
   var W = 320, H = 170, G = 140, x = cv.getContext('2d'), dpr = Math.min(3, window.devicePixelRatio || 1);
-  cv.width = W * dpr; cv.height = H * dpr; x.scale(dpr, dpr);
+  cv.style.aspectRatio = W + '/' + H;
+  function fit() {   // drawn sharp at whatever size the screen gives it (phone, iPad, computer)
+    var r = cv.getBoundingClientRect(), k = (r.width || W) / W * Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * k); cv.height = Math.round(H * k); x.setTransform(k, 0, 0, k, 0, 0);
+  }
+  cv.style.setProperty('--ar', W / H); addEventListener('resize', function () { if (!cv.hidden) fit(); });
   var best = 0; try { best = +localStorage.getItem(T.key) || 0; } catch (e) {}
   var s, raf = 0, last = 0;
   function reset() { s = { y: 0, vy: 0, obs: [], next: 60, sp: 150, t: 0, score: 0, over: false, deco: [] }; }
@@ -69,7 +75,7 @@ window.GAME = { key: 'signinator-dance-best', ground: '#1c1030', line: '#3a2560'
     if (!s || s.over) { reset(); return; }
     if (s.y === 0) { s.vy = 420; }
   }
-  function start() { pic.hidden = true; cv.hidden = false; btn.textContent = 'Jump'; reset(); last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); }
+  function start() { pic.hidden = true; cv.hidden = false; fit(); btn.textContent = 'Jump'; reset(); last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); }
   btn.onclick = function () { if (cv.hidden) start(); else jump(); };
   cv.addEventListener('pointerdown', function (e) { e.preventDefault(); jump(); });
   addEventListener('keydown', function (e) { if (cv.hidden) return; if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); } });
