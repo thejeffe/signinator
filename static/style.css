@@ -274,3 +274,17 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 @keyframes tubeFlicker{0%,18%,22%,25%,53%,57%,100%{opacity:1}20%,24%{opacity:.35}55%{opacity:.6}}
 @media (max-width:719px){.banner h1.neontube{font-size:24px}.banner .bnicon{width:32px;height:32px}}
 @media (prefers-reduced-motion:reduce){.banner h1.neontube{animation:none}}
+
+/* dialog bars (dlgbar.js): the title and the buttons, as icons, stuck to the top while the dialog scrolls */
+.dlgbar{position:sticky;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;grid-column:1/-1;margin:calc(var(--dp,16px) * -1) calc(var(--dp,16px) * -1) 0;top:var(--dtop,0px);padding:10px 12px 10px var(--dp,16px);background:var(--panel);border-bottom:1px solid var(--rule);box-shadow:0 6px 12px -10px rgba(0,0,0,.5)}
+.dlgbar h2{margin:0!important;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlgtools{display:flex;gap:6px;align-items:center;flex:none}
+.dlgtools button{flex:none}
+.dlgtools button.ico{width:40px;height:38px;padding:0!important;display:grid;place-items:center;border-radius:9px}
+.dlgtools button.ico svg{width:21px;height:21px}
+.dlgtools button.ico-save{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.dlgtools button.ico-close{background:transparent}
+.dlgtools button:disabled{opacity:.45}
+.dlgbar .dlgmsg{flex-basis:100%;margin:0!important;font-size:13px}
+.dlgbar .dlgmsg:empty{display:none}
+#setDlg,#cueDlg{overflow:auto}
