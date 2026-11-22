@@ -70,7 +70,17 @@ window.GAME = { key: 'signinator-dance-best', ground: '#1c1030', line: '#3a2560'
     var r = cv.getBoundingClientRect(), k = (r.width || W) / W * Math.min(3, window.devicePixelRatio || 1);
     cv.width = Math.round(W * k); cv.height = Math.round(H * k); x.setTransform(k, 0, 0, k, 0, 0);
   }
-  cv.style.setProperty('--ar', W / H); addEventListener('resize', function () { if (!cv.hidden) fit(); });
+  // the playing field takes the screen's shape (taller on a phone held upright, up to 320 high) and fits what's left of
+  // the screen around it (the title, the buttons, the note): the same on phones, iPads and computers
+  var HMIN = H;
+  function sizeField() {
+    var box = cv.parentNode, other = 0;
+    for (var el = box.firstElementChild; el; el = el.nextElementSibling) if (el !== cv && !el.hidden && el.tagName !== 'SCRIPT') other += el.getBoundingClientRect().height + 8;
+    var vv = window.visualViewport, vh = (vv ? vv.height : innerHeight) - other - 40, vw = Math.min(box.clientWidth || innerWidth - 32, 600);
+    H = Math.round(Math.max(HMIN, Math.min(320, W * vh / vw))); G = H - 30;
+    cv.style.aspectRatio = W + '/' + H; cv.style.width = Math.floor(Math.min(vw, Math.max(200, vh) * W / H)) + 'px';
+  }
+  cv.style.setProperty('--ar', W / H); addEventListener('resize', function () { if (!cv.hidden) { sizeField(); fit(); } });
   var best = 0; try { best = +localStorage.getItem(T.key) || 0; } catch (e) {}
   var s, raf = 0, last = 0;
   function reset() { s = { y: 0, vy: 0, obs: [], next: 60, sp: 150, t: 0, score: 0, over: false, deco: [] }; }
@@ -78,7 +88,7 @@ window.GAME = { key: 'signinator-dance-best', ground: '#1c1030', line: '#3a2560'
     if (!s || s.over) { reset(); return; }
     if (s.y === 0) { s.vy = 420; }
   }
-  function start() { pic.hidden = true; cv.hidden = false; fit(); btn.textContent = 'Jump'; reset(); last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); }
+  function start() { pic.hidden = true; cv.hidden = false; sizeField(); fit(); btn.textContent = 'Jump'; reset(); last = 0; cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); }
   btn.onclick = function () { if (cv.hidden) start(); else jump(); };
   cv.addEventListener('pointerdown', function (e) { e.preventDefault(); jump(); });
   addEventListener('keydown', function (e) { if (cv.hidden) return; if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); } });
