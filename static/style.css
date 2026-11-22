@@ -289,3 +289,5 @@ input[type=color]{width:40px;height:30px;border:1px solid var(--rule);border-rad
 .dlgbar .dlgmsg:empty{display:none}
 #setDlg,#cueDlg{overflow:auto}
 .dlgbar .dlgtabs{flex-basis:100%;margin:2px 0 0!important}
+/* dialogs sit at the top of the screen (not centred), so they don't jump about when their length changes */
+dialog[open]{margin:max(12px, env(safe-area-inset-top, 0px)) auto auto}
